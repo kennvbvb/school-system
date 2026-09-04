@@ -51,6 +51,12 @@ test('security headers ถูกส่งมาครบ (ข้อ 14.1)', asyn
   expect(headers['x-frame-options']).toBe('DENY');
   expect(headers['referrer-policy']).toBe('strict-origin-when-cross-origin');
   expect(headers['content-security-policy']).toContain("frame-ancestors 'none'");
+
+  // เบราว์เซอร์ต้องต่อไปที่ Supabase ได้ ไม่งั้นเข้าสู่ระบบไม่ได้เลย
+  // ตรวจว่า connect-src มี origin ที่ตั้งค่าไว้จริง ไม่ใช่ค่าที่ hard-code ไว้
+  const supabaseOrigin = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://127.0.0.1:54321')
+    .origin;
+  expect(headers['content-security-policy']).toContain(`connect-src 'self' ${supabaseOrigin}`);
   // ห้ามประกาศเทคโนโลยีเบื้องหลังโดยไม่จำเป็น
   expect(headers['x-powered-by']).toBeUndefined();
 });
