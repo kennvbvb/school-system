@@ -95,6 +95,11 @@ jobs:
         # พิสูจน์ด้วย unit test ไม่ได้ ต้องรันบน PostgreSQL จริง
         run: supabase/tests/run-budget-tests.sh "$DB_URL"
 
+      - name: ทดสอบรายการจัดซื้อบนฐานข้อมูลจริง
+        # RLS ทั้งบวกและลบ, optimistic concurrency และที่สำคัญที่สุด —
+        # ยอดที่ view คำนวณต้องตรงกับที่โดเมนคำนวณทุกสตางค์
+        run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/procurement_draft_test.sql
+
   e2e:
     name: End-to-end smoke tests
     runs-on: ubuntu-latest

@@ -60,3 +60,12 @@ test('security headers ถูกส่งมาครบ (ข้อ 14.1)', asyn
   // ห้ามประกาศเทคโนโลยีเบื้องหลังโดยไม่จำเป็น
   expect(headers['x-powered-by']).toBeUndefined();
 });
+
+test('หน้ารายการจัดซื้อจัดจ้างถูกกันไว้และจำปลายทางเดิม', async ({ page }) => {
+  // หน้าเหล่านี้แสดงข้อมูลการเงินของโรงเรียน จึงต้องกันไว้ก่อนเข้าสู่ระบบเสมอ
+  await page.goto('/procurements');
+  await expect(page).toHaveURL(/\/login\?returnTo=%2Fprocurements$/);
+
+  await page.goto('/procurements/new');
+  await expect(page).toHaveURL(/\/login\?returnTo=%2Fprocurements%2Fnew$/);
+});

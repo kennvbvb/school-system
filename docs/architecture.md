@@ -62,6 +62,7 @@ app/ ──▶ features/ ──▶ components/
 | วันที่ไทย   | `lib/format/thai-date.ts`             | Asia/Bangkok, พ.ศ./ค.ศ.        |
 | Redaction   | `lib/redact.ts`                       | ตัดข้อมูลอ่อนไหวก่อนลง log     |
 | งบประมาณ    | `domain/budget/`                      | ledger, ยอดที่ใช้ได้, กฎการลง  |
+| จัดซื้อ     | `domain/procurement/`                 | schema, กฎฉบับร่าง, การทำสำเนา |
 
 ### ฐานข้อมูล
 
@@ -76,6 +77,10 @@ app/ ──▶ features/ ──▶ components/
   view `budget_account_balances`
 - `20260905000200_budget_ledger_rls.sql` — RLS, append-only trigger และ
   function `budget_post_movement()` / `budget_transfer()` / `budget_available()`
+- `20260906000100_procurement_draft.sql` — procurements, procurement_items,
+  procurement_funding_allocations, attachments และ view `procurement_totals`
+- `20260906000200_procurement_draft_rls.sql` — RLS ตามความเป็นเจ้าของ
+  และ trigger เพิ่ม `version` สำหรับ optimistic concurrency
 
 ### แอปพลิเคชัน
 
