@@ -7,14 +7,14 @@ import {
   generateRequestId,
   sanitizeRequestId,
 } from '@/lib/request-id';
-import { findMissingPublicEnvVars } from '@/lib/env/required';
+import { findInvalidPublicEnvVars } from '@/lib/env/required';
 
 /**
  * Proxy (เดิมชื่อ middleware) ทำสี่อย่าง:
  *   1. ต่ออายุ Supabase session cookie (จำเป็นสำหรับ Server Component ที่เขียน cookie ไม่ได้)
  *   2. ใส่ request ID ให้ทุก request เพื่อผูก error บนหน้าจอกับ log และ audit event
  *   3. ส่ง pathname ต่อให้ Server Component ผ่าน header
- *   4. พาไปหน้า /setup-required เมื่อยังตั้งค่า environment variables ไม่ครบ
+ *   4. พาไปหน้า /setup-required เมื่อตั้งค่า environment variables ไม่ครบหรือค่าใช้ไม่ได้
  *
  * การตรวจสิทธิ์ "ไม่" ทำที่นี่ — proxy กันได้เฉพาะ path ที่รู้จัก
  * และเลี่ยงได้ในบางกรณี การตัดสินใจจริงอยู่ที่ requireUserForPage/requirePermission
@@ -36,26 +36,31 @@ export default async function proxy(request: NextRequest) {
   response.headers.set(REQUEST_ID_HEADER, requestId);
 
   /*
-   * ตั้งค่าไม่ครบ -> พาไปหน้าที่บอกได้ว่าต้องตั้งอะไร
+   * ตั้งค่าไม่ครบหรือค่าผิดรูปแบบ -> พาไปหน้าที่บอกได้ว่าต้องตั้งอะไร
    *
    * ก่อนหน้านี้ปล่อยผ่านแล้วให้ error boundary รับไป ซึ่งผู้ใช้เห็นแค่
    * "เกิดข้อผิดพลาดในระบบ" พร้อมรหัสอ้างอิง ถูกต้องในแง่ความปลอดภัย
    * แต่ผู้ดูแลระบบแก้ไม่ได้เลยถ้าไม่เปิด log ของ Vercel ดู
    *
+   * ตรวจด้วย schema ชุดเดียวกับที่หน้าเว็บใช้ ไม่ใช่แค่ดูว่ามีค่าหรือไม่
+   * เพราะค่าที่ผิดรูปแบบทำให้ระบบพังไม่ต่างจากการไม่ตั้งค่า แต่เดิมกรณีนั้น
+   * จะหลุดไปที่ error boundary ซึ่งผู้ดูแลแก้ตามไม่ได้
+   *
    * ยกเว้นหน้า /setup-required เอง (กัน redirect วน) และ /api/health
    * ที่ต้องตอบได้เสมอเพื่อให้ระบบ monitoring ทำงานต่อได้
    */
-  const missingEnvVars = findMissingPublicEnvVars((name) => process.env[name]);
+  const invalidEnvVars = findInvalidPublicEnvVars((name) => process.env[name]);
   const isExemptPath =
     request.nextUrl.pathname === SETUP_REQUIRED_PATH ||
     request.nextUrl.pathname.startsWith('/api/health');
 
-  if (missingEnvVars.length > 0) {
+  if (invalidEnvVars.length > 0) {
     if (isExemptPath) return response;
 
-    console.error('[proxy] ตั้งค่า environment variables ไม่ครบ', {
+    // log เฉพาะ "ชื่อ" ตัวแปร ไม่ log ค่า (ข้อ 14.2)
+    console.error('[proxy] ตั้งค่า environment variables ไม่ครบหรือไม่ถูกต้อง', {
       requestId,
-      missing: missingEnvVars,
+      invalid: invalidEnvVars,
     });
 
     const setupUrl = request.nextUrl.clone();
@@ -64,7 +69,7 @@ export default async function proxy(request: NextRequest) {
     return NextResponse.redirect(setupUrl);
   }
 
-  // ตั้งค่าครบแล้วแต่ยังอยู่หน้า setup — พากลับหน้าแรก
+  // ตั้งค่าถูกต้องแล้วแต่ยังอยู่หน้า setup — พากลับหน้าแรก
   if (request.nextUrl.pathname === SETUP_REQUIRED_PATH) {
     const homeUrl = request.nextUrl.clone();
     homeUrl.pathname = '/';

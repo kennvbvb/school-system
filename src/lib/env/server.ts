@@ -1,28 +1,16 @@
 import 'server-only';
 import { z } from 'zod';
+import { publicEnvSchema } from './required';
 
 /**
  * Server-side environment schema.
  *
  * ตรวจ env ตอน import ครั้งแรก (FR-SYS, 17.2) เพื่อให้ deploy ที่ตั้งค่าไม่ครบ
  * ล้มตั้งแต่ตอน build/boot แทนที่จะไปพังตอนผู้ใช้กดปุ่ม
- */
-/**
- * URL ที่ยอมรับค่าที่ไม่มี scheme แล้วเติม https:// ให้
  *
- * Vercel และ Supabase แสดง URL ในหน้า dashboard โดยไม่มี scheme
- * (เช่น "abc.vercel.app" หรือ "abc.supabase.co") คนที่คัดลอกมาวางตรง ๆ
- * จึงได้ค่าที่ z.url() ปฏิเสธ ทั้งที่เจตนาชัดเจนอยู่แล้ว
- *
- * การเติม https:// ให้ปลอดภัย เพราะทั้งสองบริการให้บริการผ่าน https เท่านั้น
- * ส่วนการพัฒนาในเครื่องใช้ http://localhost ซึ่งมี scheme อยู่แล้วจึงไม่ถูกแตะ
+ * ตัวแปรสาธารณะสามตัวมาจาก publicEnvSchema ใน env/required.ts ซึ่งเป็นชุดกฎ
+ * เดียวกับที่ proxy และฝั่ง client ใช้ จึงไม่มีทางที่ proxy ปล่อยผ่านแต่ที่นี่ปฏิเสธ
  */
-const urlField = z.preprocess((value) => {
-  if (typeof value !== 'string') return value;
-  const trimmed = value.trim().replace(/\/+$/, '');
-  if (trimmed === '' || /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) return trimmed;
-  return `https://${trimmed}`;
-}, z.url());
 
 /**
  * ตัวแปรที่ไม่บังคับมักถูกประกาศไว้เป็นค่าว่างใน .env หรือใน Vercel
@@ -33,11 +21,8 @@ const optionalString = z.preprocess(
   z.string().min(1).optional(),
 );
 
-const serverEnvSchema = z.object({
+const serverEnvSchema = publicEnvSchema.extend({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  NEXT_PUBLIC_APP_URL: urlField,
-  NEXT_PUBLIC_SUPABASE_URL: urlField,
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
   /** ใช้เฉพาะฝั่ง server เท่านั้น ห้ามหลุดเข้า client bundle */
   SUPABASE_SERVICE_ROLE_KEY: optionalString,
   SENTRY_DSN: optionalString,
