@@ -1,0 +1,10 @@
+# finding ของ gitleaks ที่ตรวจสอบแล้วว่าไม่ใช่ secret จริง
+#
+# แต่ละบรรทัดเป็น fingerprint แบบ commit:ไฟล์:rule:บรรทัด จึงยกเว้นเฉพาะจุดนั้น
+# ค่าที่หลุดเข้ามาใหม่ในไฟล์เดียวกันจะยังถูกจับตามปกติ
+# ห้ามใส่ fingerprint ของ secret จริงที่นี่ — secret ที่หลุดต้องเพิกถอนและหมุนค่าใหม่
+#
+# ค่าทดสอบใน unit test ที่ยืนยันว่า findInvalidPublicEnvVars ไม่คืนค่า env ปนกับชื่อตัวแปร
+# เป็นข้อความสมมติที่เขียนขึ้นในไฟล์ test เอง ไม่ได้มาจากระบบจริง
+# commit ถัดมาเปลี่ยนเป็นข้อความ entropy ต่ำแล้ว แต่ commit เดิมยังอยู่ในช่วงที่ CI สแกนทุกครั้ง
+715bbb9865c577a5d761a41816bd60ba8d28493f:tests/unit/env-url-normalization.test.ts:generic-api-key:111

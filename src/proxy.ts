@@ -7,17 +7,21 @@ import {
   generateRequestId,
   sanitizeRequestId,
 } from '@/lib/request-id';
+import { findInvalidPublicEnvVars } from '@/lib/env/required';
 
 /**
- * Proxy (เดิมชื่อ middleware) ทำสามอย่าง:
+ * Proxy (เดิมชื่อ middleware) ทำสี่อย่าง:
  *   1. ต่ออายุ Supabase session cookie (จำเป็นสำหรับ Server Component ที่เขียน cookie ไม่ได้)
  *   2. ใส่ request ID ให้ทุก request เพื่อผูก error บนหน้าจอกับ log และ audit event
  *   3. ส่ง pathname ต่อให้ Server Component ผ่าน header
+ *   4. พาไปหน้า /setup-required เมื่อตั้งค่า environment variables ไม่ครบหรือค่าใช้ไม่ได้
  *
  * การตรวจสิทธิ์ "ไม่" ทำที่นี่ — proxy กันได้เฉพาะ path ที่รู้จัก
  * และเลี่ยงได้ในบางกรณี การตัดสินใจจริงอยู่ที่ requireUserForPage/requirePermission
  * ในแต่ละหน้าและ server action (ข้อ 4.2)
  */
+const SETUP_REQUIRED_PATH = '/setup-required';
+
 export default async function proxy(request: NextRequest) {
   const requestId =
     sanitizeRequestId(request.headers.get(REQUEST_ID_HEADER)) ?? generateRequestId();
@@ -31,14 +35,49 @@ export default async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set(REQUEST_ID_HEADER, requestId);
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  /*
+   * ตั้งค่าไม่ครบหรือค่าผิดรูปแบบ -> พาไปหน้าที่บอกได้ว่าต้องตั้งอะไร
+   *
+   * ก่อนหน้านี้ปล่อยผ่านแล้วให้ error boundary รับไป ซึ่งผู้ใช้เห็นแค่
+   * "เกิดข้อผิดพลาดในระบบ" พร้อมรหัสอ้างอิง ถูกต้องในแง่ความปลอดภัย
+   * แต่ผู้ดูแลระบบแก้ไม่ได้เลยถ้าไม่เปิด log ของ Vercel ดู
+   *
+   * ตรวจด้วย schema ชุดเดียวกับที่หน้าเว็บใช้ ไม่ใช่แค่ดูว่ามีค่าหรือไม่
+   * เพราะค่าที่ผิดรูปแบบทำให้ระบบพังไม่ต่างจากการไม่ตั้งค่า แต่เดิมกรณีนั้น
+   * จะหลุดไปที่ error boundary ซึ่งผู้ดูแลแก้ตามไม่ได้
+   *
+   * ยกเว้นหน้า /setup-required เอง (กัน redirect วน) และ /api/health
+   * ที่ต้องตอบได้เสมอเพื่อให้ระบบ monitoring ทำงานต่อได้
+   */
+  const invalidEnvVars = findInvalidPublicEnvVars((name) => process.env[name]);
+  const isExemptPath =
+    request.nextUrl.pathname === SETUP_REQUIRED_PATH ||
+    request.nextUrl.pathname.startsWith('/api/health');
 
-  if (!supabaseUrl || !supabaseAnonKey) {
-    // ปล่อยผ่านเพื่อให้หน้า error ของแอปอธิบายว่าตั้งค่า env ไม่ครบ
-    // แทนที่จะได้หน้า 500 เปล่า ๆ ที่ debug ไม่ได้
-    return response;
+  if (invalidEnvVars.length > 0) {
+    if (isExemptPath) return response;
+
+    // log เฉพาะ "ชื่อ" ตัวแปร ไม่ log ค่า (ข้อ 14.2)
+    console.error('[proxy] ตั้งค่า environment variables ไม่ครบหรือไม่ถูกต้อง', {
+      requestId,
+      invalid: invalidEnvVars,
+    });
+
+    const setupUrl = request.nextUrl.clone();
+    setupUrl.pathname = SETUP_REQUIRED_PATH;
+    setupUrl.search = '';
+    return NextResponse.redirect(setupUrl);
   }
+
+  // ตั้งค่าถูกต้องแล้วแต่ยังอยู่หน้า setup — พากลับหน้าแรก
+  if (request.nextUrl.pathname === SETUP_REQUIRED_PATH) {
+    const homeUrl = request.nextUrl.clone();
+    homeUrl.pathname = '/';
+    return NextResponse.redirect(homeUrl);
+  }
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string;
 
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {
