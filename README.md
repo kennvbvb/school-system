@@ -29,7 +29,7 @@ School Procurement & Inventory System — เว็บแอปพลิเค�
 npm ci                      # ติดตั้งตาม lockfile
 npx supabase start          # ยกฐานข้อมูล local
 cp .env.example .env.local  # แล้วเติมค่าจากผลลัพธ์ของ supabase start
-npx supabase db reset       # สร้าง schema + seed ข้อมูลสมมติ
+npx supabase db reset       # สร้าง schema + seed (reference + sample)
 npm run dev                 # http://localhost:3000
 ```
 

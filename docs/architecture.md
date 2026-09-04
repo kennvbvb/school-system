@@ -66,6 +66,8 @@ app/ ──▶ features/ ──▶ components/
 
 - `20260903000100_core_identity.sql` — departments, positions, profiles, RBAC, audit_events
 - `20260903000200_rls_policies.sql` — RLS ทุกตาราง + `has_permission()`
+- `seed-reference.sql` — สิทธิ์/บทบาทที่ผูกกับโค้ด รันทุก environment
+- `seed-sample.sql` — หน่วยงานและตำแหน่งตัวอย่าง เฉพาะ local/preview
 
 ### แอปพลิเคชัน
 

@@ -81,12 +81,13 @@ jobs:
 
       - name: Start local Supabase and apply migrations
         # ยืนยันว่า migration ทั้งชุดรันบนฐานข้อมูลเปล่าได้จริง
-        # และ seed ที่ผูกกับโค้ดไม่ขัดกับ constraint ใด
+        # และ seed ทั้งสองไฟล์รันตามลำดับได้โดยไม่ขัดกับ constraint ใด
         run: |
           supabase db start
           supabase db reset --no-seed
-          psql "$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')" \
-            -v ON_ERROR_STOP=1 -f supabase/seed.sql
+          DB_URL="$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')"
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/seed-reference.sql
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/seed-sample.sql
 
   e2e:
     name: End-to-end smoke tests

@@ -61,7 +61,8 @@
 | `code`           | text | PK, ต้องตรงรูปแบบ `^[a-z_]+(\.[a-z_]+)+$` |
 | `description_th` | text | not null                                  |
 
-รายการผูกกับ `src/domain/auth/permissions.ts` แก้ผ่าน migration เท่านั้น ไม่มี policy เขียน
+รายการผูกกับ `src/domain/auth/permissions.ts` และ seed ด้วย `supabase/seed-reference.sql`
+แก้ผ่าน migration เท่านั้น ไม่มี policy เขียน
 
 ## `roles` — บทบาท
 

@@ -13,6 +13,14 @@ max_rows = 1000
 port = 54322
 major_version = 17
 
+# seed แบ่งเป็นสองไฟล์และต้องรันตามลำดับนี้
+#   seed-reference.sql = ข้อมูลบังคับที่ผูกกับโค้ด รันทุก environment
+#   seed-sample.sql    = ข้อมูลสมมติ รันเฉพาะ local และ preview
+# Production ไม่ได้ใช้ค่านี้ เพราะรัน SQL เองตาม docs/setup-supabase-vercel.md
+[db.seed]
+enabled = true
+sql_paths = ["./seed-reference.sql", "./seed-sample.sql"]
+
 [studio]
 enabled = true
 port = 54323
