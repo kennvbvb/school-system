@@ -8,6 +8,23 @@ import { z } from 'zod';
  * ล้มตั้งแต่ตอน build/boot แทนที่จะไปพังตอนผู้ใช้กดปุ่ม
  */
 /**
+ * URL ที่ยอมรับค่าที่ไม่มี scheme แล้วเติม https:// ให้
+ *
+ * Vercel และ Supabase แสดง URL ในหน้า dashboard โดยไม่มี scheme
+ * (เช่น "abc.vercel.app" หรือ "abc.supabase.co") คนที่คัดลอกมาวางตรง ๆ
+ * จึงได้ค่าที่ z.url() ปฏิเสธ ทั้งที่เจตนาชัดเจนอยู่แล้ว
+ *
+ * การเติม https:// ให้ปลอดภัย เพราะทั้งสองบริการให้บริการผ่าน https เท่านั้น
+ * ส่วนการพัฒนาในเครื่องใช้ http://localhost ซึ่งมี scheme อยู่แล้วจึงไม่ถูกแตะ
+ */
+const urlField = z.preprocess((value) => {
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim().replace(/\/+$/, '');
+  if (trimmed === '' || /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}, z.url());
+
+/**
  * ตัวแปรที่ไม่บังคับมักถูกประกาศไว้เป็นค่าว่างใน .env หรือใน Vercel
  * ถือค่าว่างเท่ากับ "ไม่ได้ตั้ง" เพื่อไม่ให้ build ล้มโดยไม่จำเป็น
  */
@@ -18,8 +35,8 @@ const optionalString = z.preprocess(
 
 const serverEnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  NEXT_PUBLIC_APP_URL: z.url(),
-  NEXT_PUBLIC_SUPABASE_URL: z.url(),
+  NEXT_PUBLIC_APP_URL: urlField,
+  NEXT_PUBLIC_SUPABASE_URL: urlField,
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
   /** ใช้เฉพาะฝั่ง server เท่านั้น ห้ามหลุดเข้า client bundle */
   SUPABASE_SERVICE_ROLE_KEY: optionalString,
@@ -33,6 +50,23 @@ const serverEnvSchema = z.object({
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
 
+/**
+ * error สำหรับ "ตั้งค่าไม่ครบ" โดยเฉพาะ แยกจาก error ทั่วไป
+ *
+ * เก็บเฉพาะ "ชื่อ" ตัวแปรที่มีปัญหา ไม่เก็บค่า เพื่อให้หน้าจอบอกผู้ดูแลได้ว่า
+ * ต้องไปแก้อะไร โดยไม่เสี่ยงทำให้ค่าลับหลุดออกไปทาง error message
+ * ชื่อตัวแปรเปิดเผยอยู่แล้วใน .env.example จึงไม่ใช่ข้อมูลลับ
+ */
+export class EnvConfigurationError extends Error {
+  readonly invalidVariables: readonly string[];
+
+  constructor(invalidVariables: readonly string[]) {
+    super(`ตั้งค่า environment variables ไม่ครบหรือไม่ถูกต้อง: ${invalidVariables.join(', ')}`);
+    this.name = 'EnvConfigurationError';
+    this.invalidVariables = invalidVariables;
+  }
+}
+
 let cached: ServerEnv | null = null;
 
 export function getServerEnv(): ServerEnv {
@@ -41,10 +75,10 @@ export function getServerEnv(): ServerEnv {
   const parsed = serverEnvSchema.safeParse(process.env);
 
   if (!parsed.success) {
-    const issues = parsed.error.issues
-      .map((issue) => `  - ${issue.path.join('.') || '(root)'}: ${issue.message}`)
-      .join('\n');
-    throw new Error(`ตั้งค่า environment variables ไม่ครบหรือไม่ถูกต้อง:\n${issues}`);
+    const invalid = [
+      ...new Set(parsed.error.issues.map((issue) => String(issue.path[0] ?? '(root)'))),
+    ];
+    throw new EnvConfigurationError(invalid);
   }
 
   cached = parsed.data;

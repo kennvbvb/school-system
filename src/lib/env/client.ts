@@ -6,9 +6,17 @@ import { z } from 'zod';
  * ต้องอ้าง `process.env.NEXT_PUBLIC_*` แบบเต็มสตริง เพราะ Next.js แทนค่าตอน build
  * ด้วยการ match ข้อความตรง ๆ การเขียน `process.env[key]` จะได้ undefined
  */
+/** ใช้กติกาเดียวกับฝั่ง server เพื่อไม่ให้สองฝั่งยอมรับค่าต่างกัน (ดู env/server.ts) */
+const urlField = z.preprocess((value) => {
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim().replace(/\/+$/, '');
+  if (trimmed === '' || /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}, z.url());
+
 const clientEnvSchema = z.object({
-  NEXT_PUBLIC_APP_URL: z.url(),
-  NEXT_PUBLIC_SUPABASE_URL: z.url(),
+  NEXT_PUBLIC_APP_URL: urlField,
+  NEXT_PUBLIC_SUPABASE_URL: urlField,
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
 });
 
