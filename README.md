@@ -35,6 +35,8 @@ npm run dev                 # http://localhost:3000
 
 การสร้างบัญชีผู้ดูแลคนแรก: ดู [`docs/deployment.md`](docs/deployment.md)
 
+**ต้องการเปิดใช้บน Supabase + Vercel?** ทำตาม [`docs/setup-supabase-vercel.md`](docs/setup-supabase-vercel.md) ทีละขั้น
+
 ## คำสั่ง
 
 | คำสั่ง                 | หน้าที่                                  |
@@ -77,18 +79,19 @@ docs/                  แผน สมมติฐาน ADR และคู่
 
 ## เอกสาร
 
-| ไฟล์                                                                               | เนื้อหา                                       |
-| ---------------------------------------------------------------------------------- | --------------------------------------------- |
-| [`docs/SCHOOL_PROCUREMENT_SYSTEM_PLAN.md`](docs/SCHOOL_PROCUREMENT_SYSTEM_PLAN.md) | PRD, spec และแผนส่งมอบฉบับเต็ม                |
-| [`docs/assumptions.md`](docs/assumptions.md)                                       | **สิ่งที่สมมติไว้และคำถามที่โรงเรียนต้องตอบ** |
-| [`docs/architecture.md`](docs/architecture.md)                                     | การแบ่งชั้นและสิ่งที่มีอยู่จริง               |
-| [`docs/data-dictionary.md`](docs/data-dictionary.md)                               | ตาราง คอลัมน์ และข้อจำกัด                     |
-| [`docs/permissions.md`](docs/permissions.md)                                       | เมทริกซ์บทบาทกับสิทธิ์                        |
-| [`docs/deployment.md`](docs/deployment.md)                                         | environment, env vars และขั้นตอน deploy       |
-| [`docs/backup-restore.md`](docs/backup-restore.md)                                 | แผนสำรองและกู้คืน (ยังต้องกรอกและซ้อม)        |
-| [`docs/document-template-guide.md`](docs/document-template-guide.md)               | กติกาแม่แบบเอกสาร                             |
-| [`docs/decisions/`](docs/decisions/)                                               | Architecture Decision Records                 |
-| [`docs/phase-1-issues.md`](docs/phase-1-issues.md)                                 | รายการ issue ของ Phase 1 พร้อมเกณฑ์ตรวจรับ    |
+| ไฟล์                                                                               | เนื้อหา                                             |
+| ---------------------------------------------------------------------------------- | --------------------------------------------------- |
+| [`docs/SCHOOL_PROCUREMENT_SYSTEM_PLAN.md`](docs/SCHOOL_PROCUREMENT_SYSTEM_PLAN.md) | PRD, spec และแผนส่งมอบฉบับเต็ม                      |
+| [`docs/assumptions.md`](docs/assumptions.md)                                       | **สิ่งที่สมมติไว้และคำถามที่โรงเรียนต้องตอบ**       |
+| [`docs/architecture.md`](docs/architecture.md)                                     | การแบ่งชั้นและสิ่งที่มีอยู่จริง                     |
+| [`docs/data-dictionary.md`](docs/data-dictionary.md)                               | ตาราง คอลัมน์ และข้อจำกัด                           |
+| [`docs/permissions.md`](docs/permissions.md)                                       | เมทริกซ์บทบาทกับสิทธิ์                              |
+| [`docs/setup-supabase-vercel.md`](docs/setup-supabase-vercel.md)                   | **ตั้งค่า Supabase + Vercel ทีละขั้นจนเปิดเว็บได้** |
+| [`docs/deployment.md`](docs/deployment.md)                                         | environment, env vars และขั้นตอน deploy             |
+| [`docs/backup-restore.md`](docs/backup-restore.md)                                 | แผนสำรองและกู้คืน (ยังต้องกรอกและซ้อม)              |
+| [`docs/document-template-guide.md`](docs/document-template-guide.md)               | กติกาแม่แบบเอกสาร                                   |
+| [`docs/decisions/`](docs/decisions/)                                               | Architecture Decision Records                       |
+| [`docs/phase-1-issues.md`](docs/phase-1-issues.md)                                 | รายการ issue ของ Phase 1 พร้อมเกณฑ์ตรวจรับ          |
 
 ## สิ่งที่ต้องได้คำตอบก่อนไปต่อ
 

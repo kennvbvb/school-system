@@ -14,6 +14,9 @@
 
 ## Environment variables
 
+> การตั้งค่าจริงบนคลาวด์ตั้งแต่ศูนย์ (สร้างโครงการ Supabase, รัน migration,
+> ตั้งค่าใน Vercel, สร้างผู้ดูแลคนแรก) ดู [`setup-supabase-vercel.md`](setup-supabase-vercel.md)
+
 ดูรายการทั้งหมดใน `.env.example` — ไฟล์นั้นระบุเฉพาะ **ชื่อ** ไม่มีค่าจริง
 
 | ตัวแปร                          | ฝั่ง                | บังคับ                                |
