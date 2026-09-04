@@ -1,0 +1,55 @@
+@import 'tailwindcss';
+
+/*
+ * ระบบสีและตัวอักษรกลาง
+ *
+ * ข้อกำหนด UX (ข้อ 12.6):
+ *   - เนื้อหาหลักอย่างน้อย 16px
+ *   - focus state ต้องชัดเจน
+ *   - ไม่ใช้สีเพียงอย่างเดียวบอกสถานะ (คู่กับข้อความ/ไอคอนเสมอ)
+ */
+@theme {
+  --font-sans:
+    'Sarabun', 'Noto Sans Thai', 'IBM Plex Sans Thai', -apple-system, BlinkMacSystemFont,
+    'Segoe UI', sans-serif;
+
+  --color-brand-50: oklch(0.97 0.02 250);
+  --color-brand-100: oklch(0.93 0.04 250);
+  --color-brand-600: oklch(0.52 0.16 250);
+  --color-brand-700: oklch(0.44 0.15 250);
+  --color-brand-800: oklch(0.37 0.12 250);
+}
+
+:root {
+  color-scheme: light;
+}
+
+html {
+  /* ระบบใช้ภาษาไทยเป็นหลัก ขนาดฐาน 16px ตามข้อกำหนด */
+  font-size: 16px;
+}
+
+body {
+  font-family: var(--font-sans);
+  line-height: 1.65;
+  /* เว้นวรรคคำไทยอ่านง่ายขึ้นเมื่อบรรทัดยาว */
+  text-wrap: pretty;
+}
+
+/* focus ที่มองเห็นชัดในทุกองค์ประกอบที่โฟกัสได้ (WCAG 2.1 AA — NFR-005) */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 3px solid var(--color-brand-600);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+
+/* หน้าพิมพ์ต้องไม่มีเมนูหรือปุ่มติดไปด้วย (ข้อ 12.6) */
+@media print {
+  [data-print='hide'] {
+    display: none !important;
+  }
+
+  body {
+    background: white;
+  }
+}

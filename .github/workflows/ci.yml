@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# ยกเลิกรอบเก่าเมื่อมี push ใหม่บน branch เดียวกัน เพื่อไม่ให้คิวยาวโดยเปล่าประโยชน์
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # ค่าปลอมสำหรับ build/test เท่านั้น — ห้ามชี้ CI ไปที่ฐานข้อมูลจริง (ข้อ 17.1)
+  NEXT_PUBLIC_APP_URL: http://localhost:3000
+  NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
+  APP_TIMEZONE: Asia/Bangkok
+
+jobs:
+  verify:
+    name: Typecheck, lint, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies (frozen lockfile)
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Unit and integration tests
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+
+  migrations:
+    name: Validate database migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start local Supabase and apply migrations
+        # ยืนยันว่า migration ทั้งชุดรันบนฐานข้อมูลเปล่าได้จริง
+        # และ seed ที่ผูกกับโค้ดไม่ขัดกับ constraint ใด
+        run: |
+          supabase db start
+          supabase db reset --no-seed
+          psql "$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')" \
+            -v ON_ERROR_STOP=1 -f supabase/seed.sql
+
+  e2e:
+    name: End-to-end smoke tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: verify
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies (frozen lockfile)
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run smoke tests
+        # ตั้ง PLAYWRIGHT_BASE_URL เป็น URL ของ Vercel Preview เพื่อทดสอบกับ deployment จริง
+        # ถ้าไม่ตั้ง Playwright จะ build แล้วยกเซิร์ฟเวอร์ขึ้นเองใน runner
+        run: npm run test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

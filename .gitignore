@@ -1,0 +1,41 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+
+# next.js
+/.next/
+/out/
+next-env.d.ts
+
+# production
+/build
+
+# testing
+/coverage
+/playwright-report
+/test-results
+/blob-report
+/playwright/.cache
+
+# environment — ห้าม commit ค่าจริงเด็ดขาด (ข้อ 14.1)
+.env
+.env.*
+!.env.example
+
+# supabase local
+/supabase/.branches
+/supabase/.temp
+
+# typescript
+*.tsbuildinfo
+
+# editors / os
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# logs
+*.log
+npm-debug.log*
