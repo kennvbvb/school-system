@@ -52,6 +52,21 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Build ได้แม้ยังไม่ได้ตั้ง env (กัน prerender หน้าที่ต้องใช้ session)
+        # Vercel deployment แรกล้มเพราะเหตุนี้: หน้าที่อ่าน session ถูก prerender
+        # ตอน build แล้ว throw เพราะยังไม่มี env ทั้งที่หน้าเหล่านั้นควรเป็น dynamic
+        #
+        # ต้นเหตุคือลำดับการเรียกใน createSupabaseServerClient()
+        # ถ้าตรวจ env ก่อนเรียก cookies() Next.js จะยังไม่รู้ว่า route เป็น dynamic
+        #
+        # step นี้ build ในสภาพที่ไม่มี env เลย ถ้ามีใครสลับลำดับกลับ CI จะจับได้ทันที
+        run: |
+          rm -rf .next
+          env -u NEXT_PUBLIC_APP_URL \
+              -u NEXT_PUBLIC_SUPABASE_URL \
+              -u NEXT_PUBLIC_SUPABASE_ANON_KEY \
+            npm run build
+
   migrations:
     name: Validate database migrations
     runs-on: ubuntu-latest
