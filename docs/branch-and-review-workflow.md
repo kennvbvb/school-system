@@ -7,22 +7,21 @@
 
 ## 1. สถานะ branch ณ ปัจจุบัน
 
-| รายการ                         | ค่าจริงที่ตรวจได้           |
-| ------------------------------ | --------------------------- |
-| Default branch บน GitHub       | `claude/new-session-1bt8d0` |
-| Branch ที่ PR #1–#3 merge เข้า | `main`                      |
-| Branch protection              | **ยังไม่ได้ตั้ง**           |
+| รายการ            | ค่าจริงที่ตรวจได้                  |
+| ----------------- | ---------------------------------- |
+| Default branch    | `main` — เจ้าของรีโปเปลี่ยนแล้ว    |
+| Trunk ที่ใช้จริง  | `main` (PR #1–#3 merge เข้าไปแล้ว) |
+| Branch protection | **ยังไม่ได้ตั้ง**                  |
 
-**ประเด็นที่ต้องแก้:** default branch ยังเป็น branch ของ session พัฒนา ไม่ใช่ `main`
-ผลคือ PR ที่เปิดใหม่จะตั้ง base เป็น branch นั้นโดยอัตโนมัติ ซึ่งไม่ใช่ trunk จริงของโครงการ
+ก่อนหน้านี้ default branch เป็น `claude/new-session-1bt8d0` ซึ่งเป็น branch ของ session พัฒนา
+ทำให้ PR ที่เปิดใหม่ตั้ง base ผิดโดยอัตโนมัติ ตอนนี้แก้แล้ว
 
-**ข้อเสนอ:** เปลี่ยน default branch เป็น `main` แล้วตั้ง branch protection
-— เป็นการเปลี่ยนค่าตั้งของรีโป จึงต้องให้เจ้าของรีโปเป็นผู้ทำ ไม่ใช่ agent
-(ดู [`assumptions.md`](assumptions.md) คำถาม Q29)
+**ที่เหลือ:** ตั้ง branch protection บน `main` ตามข้อ 3 — เป็นการเปลี่ยนค่าตั้งของรีโป
+จึงต้องให้เจ้าของรีโปเป็นผู้ทำ ไม่ใช่ agent (คำถาม Q29 ใน [`assumptions.md`](assumptions.md))
 
 ## 2. กติกาที่ใช้ระหว่างที่ยังไม่ได้ตั้ง branch protection
 
-- **trunk คือ `main`** — ทุก PR ตั้ง base เป็น `main` เสมอ แม้ GitHub จะเสนอ branch อื่น
+- **trunk คือ `main`** — ทุก PR ตั้ง base เป็น `main` เสมอ
 - **ห้าม commit ตรงเข้า `main`** — งานทุกชิ้นผ่าน PR
 - **หนึ่ง PR ต่อหนึ่งเรื่อง** ตามลำดับ PR-00 ถึง PR-10 ในแผนพัฒนาต่อ
   ห้ามรวม schema, workflow และ PDF ไว้ใน PR เดียวกัน
