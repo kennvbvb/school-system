@@ -28,7 +28,35 @@ jobs:
       - run: npm ci
 
       - name: npm audit (บล็อกเมื่อพบระดับ high ขึ้นไป)
-        run: npm audit --audit-level=high
+        # แยก "พบช่องโหว่" ออกจาก "ติดต่อ registry ไม่ได้" ให้ชัดเจน
+        #
+        # ช่องโหว่ระดับ high ขึ้นไป -> ล้ม build เสมอ ไม่มีการผ่อนผัน
+        # registry ล่ม (503/timeout/DNS) -> ลองซ้ำ 3 ครั้งแบบถอยหลัง
+        #   ถ้ายังไม่ได้ ให้เตือนแล้วผ่าน เพราะการบล็อก PR ทุกฉบับเพราะเซิร์ฟเวอร์
+        #   ของ npm ล่ม เป็นผลลบลวงที่ทำให้ทีมเลิกเชื่อถือ CI
+        #   รอบ scheduled รายสัปดาห์จะตรวจซ้ำให้อยู่แล้ว
+        run: |
+          set -uo pipefail
+
+          for attempt in 1 2 3; do
+            output=$(npm audit --audit-level=high 2>&1) && {
+              echo "$output"
+              echo "ไม่พบช่องโหว่ระดับ high ขึ้นไป"
+              exit 0
+            }
+
+            echo "$output"
+
+            if echo "$output" | grep -qiE 'audit endpoint returned an error|service unavailable|ETIMEDOUT|ECONNRESET|ENETUNREACH|EAI_AGAIN|registry error'; then
+              echo "::notice::ครั้งที่ ${attempt}: ติดต่อ npm registry ไม่ได้ ไม่ใช่ผลการตรวจช่องโหว่"
+              [ "$attempt" -lt 3 ] && sleep $((attempt * 30)) && continue
+              echo "::warning::ข้ามการตรวจ dependency เพราะ npm registry ใช้งานไม่ได้หลังลองซ้ำ 3 ครั้ง — รอบ scheduled จะตรวจซ้ำให้"
+              exit 0
+            fi
+
+            echo "::error::พบช่องโหว่ระดับ high ขึ้นไปใน dependency"
+            exit 1
+          done
 
   secrets:
     name: Secret scan
