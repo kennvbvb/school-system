@@ -88,6 +88,12 @@ jobs:
           DB_URL="$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')"
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/seed-reference.sql
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/seed-sample.sql
+          echo "DB_URL=$DB_URL" >> "$GITHUB_ENV"
+
+      - name: ทดสอบ budget ledger บนฐานข้อมูลจริง
+        # constraint, RLS, การล็อกแถว และ audit ที่เกิดในทรานแซกชันเดียวกับ movement
+        # พิสูจน์ด้วย unit test ไม่ได้ ต้องรันบน PostgreSQL จริง
+        run: supabase/tests/run-budget-tests.sh "$DB_URL"
 
   e2e:
     name: End-to-end smoke tests
