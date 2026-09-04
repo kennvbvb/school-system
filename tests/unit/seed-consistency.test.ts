@@ -90,34 +90,55 @@ describe('supabase/seed-reference.sql สอดคล้องกับ src/doma
   });
 });
 
+/** ตารางที่แต่ละไฟล์ "ได้รับอนุญาต" ให้เขียน — เป็นสัญญาของการแบ่งไฟล์ */
+const REFERENCE_TABLES = ['permissions', 'roles', 'role_permissions', 'units'] as const;
+const SAMPLE_TABLES = [
+  'departments',
+  'positions',
+  'funding_sources',
+  'item_categories',
+  'locations',
+] as const;
+
+const insertedTables = (sql: string): string[] => [
+  ...new Set(
+    [...sqlOnly(sql).matchAll(/insert into public\.([a-z_]+)/g)].map((match) => match[1] as string),
+  ),
+];
+
 describe('การแบ่งหน้าที่ระหว่างไฟล์ seed ทั้งสอง', () => {
+  /**
+   * allowlist ที่ชัดเจนดีกว่าการห้ามทีละตาราง เพราะจับได้ทันทีเมื่อมีคนเพิ่ม
+   * ตารางใหม่เข้าไฟล์ผิด โดยไม่ต้องไล่แก้ test ทุกครั้งที่ schema โต
+   */
+  it('ไฟล์ reference เขียนเฉพาะตารางข้อมูลอ้างอิงที่ระบบต้องมี', () => {
+    expect(insertedTables(referenceSql).sort()).toEqual([...REFERENCE_TABLES].sort());
+  });
+
+  it('ไฟล์ sample เขียนเฉพาะตารางข้อมูลสมมติ', () => {
+    expect(insertedTables(sampleSql).sort()).toEqual([...SAMPLE_TABLES].sort());
+  });
+
+  it('สองไฟล์ไม่เขียนตารางเดียวกัน', () => {
+    const overlap = insertedTables(referenceSql).filter((table) =>
+      insertedTables(sampleSql).includes(table),
+    );
+    expect(overlap).toEqual([]);
+  });
+
   /**
    * ไฟล์ reference ถูกรันบน Production ด้วย จึงต้องไม่มีข้อมูลสมมติปนเข้าไป
    * ถ้ามีใครเผลอเพิ่มหน่วยงานตัวอย่างลงไฟล์นี้ หน่วยงานสมมติจะโผล่ในระบบจริง
    */
-  it('ไฟล์ reference ไม่มีข้อมูลสมมติปนอยู่', () => {
-    const sql = sqlOnly(referenceSql);
+  it('ไฟล์ reference ไม่มีข้อมูลที่กำกับว่าเป็นตัวอย่าง', () => {
     // เทียบกับ "(ตัวอย่าง)" ที่มีวงเล็บ ซึ่งเป็นธรรมเนียมกำกับข้อมูลสมมติของโครงการ
     // ไม่ใช่คำว่า "ตัวอย่าง" ลอย ๆ เพราะเป็นคำที่ใช้ในคำอธิบายสิทธิ์ตามปกติ
     // เช่น documents.preview มีคำอธิบายว่า "ดูตัวอย่างเอกสาร"
-    expect(sql).not.toMatch(/\(ตัวอย่าง\)/);
-    expect(sql).not.toMatch(/insert into public\.departments/);
-    expect(sql).not.toMatch(/insert into public\.positions/);
-  });
-
-  /**
-   * ตรงกันข้าม ไฟล์ sample ต้องไม่แตะตารางที่เป็นข้อมูลอ้างอิงของระบบ
-   * มิฉะนั้นการข้ามไฟล์นี้บน Production จะทำให้ได้สิทธิ์ไม่ครบโดยไม่รู้ตัว
-   */
-  it('ไฟล์ sample ไม่แตะตารางสิทธิ์และบทบาท', () => {
-    const sql = sqlOnly(sampleSql);
-    for (const table of ['permissions', 'roles', 'role_permissions'] as const) {
-      expect(sql).not.toMatch(new RegExp(`insert into public\\.${table}\\b`));
-    }
+    expect(sqlOnly(referenceSql)).not.toMatch(/\(ตัวอย่าง\)/);
   });
 
   it('ข้อมูลสมมติทุกแถวกำกับด้วยคำว่า "(ตัวอย่าง)" ให้เห็นชัด', () => {
-    const rows = [...sqlOnly(sampleSql).matchAll(/\('[A-Z_]+',\s*'([^']+)'/g)].map(
+    const rows = [...sqlOnly(sampleSql).matchAll(/\('[A-Z0-9_-]+',\s*'([^']+)'/g)].map(
       (match) => match[1] as string,
     );
 

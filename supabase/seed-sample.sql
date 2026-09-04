@@ -32,3 +32,32 @@ insert into public.positions (code, name_th, is_signatory) values
   ('OFFICER',    'เจ้าหน้าที่พัสดุ (ตัวอย่าง)',    false),
   ('TEACHER',    'ครู (ตัวอย่าง)',                false)
 on conflict (code) do nothing;
+
+-- -----------------------------------------------------------------------------
+-- ข้อมูลพื้นฐานสมมติสำหรับ Phase 2 (หมวดพัสดุ แหล่งเงิน สถานที่)
+--
+-- หน่วยนับไม่ได้อยู่ที่นี่ เพราะ "ชิ้น" "กล่อง" "รีม" เป็นหน่วยสากลที่ใช้จริง
+-- ทุกโรงเรียน ไม่ใช่ข้อมูลสมมติ จึงอยู่ใน seed-reference.sql
+--
+-- ปีงบประมาณและข้อมูลโรงเรียนจงใจไม่ใส่ไว้ที่นี่ เพราะเป็นค่าที่โรงเรียน
+-- ต้องกรอกเองให้ตรงกับความจริง (คำถาม Q6 และ Q7 ใน docs/assumptions.md)
+-- การใส่ค่าสมมติไว้เสี่ยงให้มีคนเผลอใช้ต่อโดยไม่แก้
+-- -----------------------------------------------------------------------------
+
+insert into public.funding_sources (code, name_th) values
+  ('BUDGET',  'เงินงบประมาณ (ตัวอย่าง)'),
+  ('INCOME',  'เงินรายได้สถานศึกษา (ตัวอย่าง)'),
+  ('SUBSIDY', 'เงินอุดหนุน (ตัวอย่าง)')
+on conflict (code) do nothing;
+
+insert into public.item_categories (code, name_th, kind) values
+  ('SUP-OFFICE',  'วัสดุสำนักงาน (ตัวอย่าง)',   'SUPPLY'),
+  ('SUP-CLEAN',   'วัสดุงานบ้านงานครัว (ตัวอย่าง)', 'SUPPLY'),
+  ('AST-COMPUTER', 'ครุภัณฑ์คอมพิวเตอร์ (ตัวอย่าง)', 'ASSET'),
+  ('AST-FURNITURE', 'ครุภัณฑ์สำนักงาน (ตัวอย่าง)', 'ASSET')
+on conflict (code) do nothing;
+
+insert into public.locations (code, name_th) values
+  ('STORE-01', 'ห้องพัสดุกลาง (ตัวอย่าง)'),
+  ('OFFICE-01', 'ห้องธุรการ (ตัวอย่าง)')
+on conflict (code) do nothing;

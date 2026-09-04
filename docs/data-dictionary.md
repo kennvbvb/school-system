@@ -1,6 +1,6 @@
 # Data dictionary
 
-> ครอบคลุมเฉพาะตารางที่ **มีอยู่จริง** หลัง Phase 1
+> ครอบคลุมเฉพาะตารางที่ **มีอยู่จริง** หลัง Phase 2
 > ตารางของ Phase 3-6 อยู่ในแผนข้อ 11 และจะถูกเพิ่มที่นี่เมื่อ migration ถูกสร้าง
 
 ## ข้อตกลงร่วม
@@ -112,3 +112,84 @@ PK ประกอบ `(role_code, permission_code)` — กันการผ�
 | `user_agent`                 | text  | ตัดที่ 512 อักขระ                                                |
 
 **Index:** `created_at desc`, `(entity_type, entity_id)`, `(actor_id, created_at desc)`, `request_id`
+
+---
+
+# ข้อมูลพื้นฐาน (Phase 2)
+
+## `school_settings` — ข้อมูลโรงเรียน
+
+เก็บแบบ **effective-dated** ไม่ใช่แถวเดียวที่ update ทับ เพราะที่อยู่ ตราสัญลักษณ์
+และข้อมูลติดต่อเปลี่ยนได้ตามเวลา และเอกสารต้องอ้างค่า ณ วันที่ออก
+
+| คอลัมน์                           | ชนิด | หมายเหตุ                               |
+| --------------------------------- | ---- | -------------------------------------- |
+| `name_th` / `address_th`          | text | not null, ห้ามเป็นช่องว่างล้วน         |
+| `tax_id`                          | text | ตัวเลข 13 หลัก                         |
+| `logo_path`                       | text | path ใน Storage ไม่ใช่ไฟล์             |
+| `effective_from` / `effective_to` | date | `effective_to` เป็น null = ยังมีผลอยู่ |
+
+**Exclude constraint** `school_settings_no_overlap` กันไม่ให้มีสองชุดที่ช่วงเวลามีผลทับกัน
+
+## `fiscal_years` — ปีงบประมาณ
+
+| คอลัมน์                   | ชนิด    | หมายเหตุ                                               |
+| ------------------------- | ------- | ------------------------------------------------------ |
+| `code`                    | text    | unique                                                 |
+| `year_be`                 | integer | unique, จำกัด 2500-2700 เพื่อจับการกรอกปี ค.ศ. ผิดช่อง |
+| `start_date` / `end_date` | date    | `end_date > start_date`                                |
+| `status`                  | enum    | `OPEN` / `CLOSED`                                      |
+| `closed_at` / `closed_by` | —       | ต้องสอดคล้องกับ `status` (check constraint)            |
+
+**Exclude constraint** `fiscal_years_no_overlap` — ช่วงวันที่ห้ามทับกัน
+เพราะระบบต้องหาปีงบประมาณจากวันที่ได้คำตอบเดียว
+
+> ปีงบประมาณมาจากตารางนี้เสมอ **ไม่ใช่** จาก `year + 543` (ข้อ 9.3)
+> ดู `src/domain/master-data/fiscal-year.ts`
+
+## `vendors` — ผู้ขาย
+
+| คอลัมน์                     | ชนิด  | หมายเหตุ             |
+| --------------------------- | ----- | -------------------- |
+| `vendor_code`               | text  | unique               |
+| `tax_id`                    | text  | ตัวเลข 13 หลัก       |
+| `branch_no`                 | text  | ตัวเลขไม่เกิน 5 หลัก |
+| `address`                   | jsonb |                      |
+| `deleted_at` / `deleted_by` | —     | soft delete          |
+
+**`vendors_tax_id_branch_unique`** — unique เฉพาะแถวที่ `deleted_at is null`
+เพื่อให้บันทึกผู้ขายรายเดิมใหม่ได้หลังลบ และรวมสาขาเพราะนิติบุคคลเดียวกันมีหลายสาขา
+
+**`vendors_name_trgm_idx`** — GIN trigram index สำหรับค้นชื่อใกล้เคียง (FR-MST-009)
+
+> **ไม่มีคอลัมน์ข้อมูลบัญชีธนาคาร** โดยเจตนา — MVP ไม่มีการจ่ายเงินจริง
+> แผนข้อ 11.2 ระบุว่า "หากไม่จำเป็นต่อ MVP ห้ามเก็บ"
+
+## `projects` / `funding_sources`
+
+`projects` ผูกกับปีงบประมาณเสมอ และ `unique (fiscal_year_id, code)` ทำให้
+รหัสโครงการซ้ำข้ามปีได้ แต่ห้ามซ้ำในปีเดียวกัน
+
+`budget_amount` เป็น `numeric(18,2)` แปลงเป็น BigInt หน่วยสตางค์ที่ repository (ADR 0005)
+
+## `units` / `item_categories` / `locations`
+
+`item_categories` ใช้ตารางเดียวที่มีคอลัมน์ `kind` (`SUPPLY` / `ASSET`)
+แทนสองตารางที่โครงสร้างเหมือนกัน เพราะเกณฑ์แบ่งวัสดุ/ครุภัณฑ์ของโรงเรียน
+ยังไม่ได้ข้อสรุป (คำถาม Q5) การใช้ตารางเดียวทำให้ปรับเกณฑ์ภายหลังได้
+โดยไม่ต้องย้ายข้อมูลข้ามตาราง
+
+## RLS ของข้อมูลพื้นฐาน
+
+| ตาราง             | อ่าน                                                 | เขียน             |
+| ----------------- | ---------------------------------------------------- | ----------------- |
+| `school_settings` | ผู้ใช้ที่ active                                     | `settings.manage` |
+| `fiscal_years`    | ผู้ใช้ที่ active                                     | `settings.manage` |
+| ตารางอ้างอิงอื่น  | ผู้ใช้ที่ active                                     | `masters.manage`  |
+| `vendors`         | ที่ยังไม่ถูกลบ (ผู้ถือ `masters.manage` เห็นทั้งหมด) | `masters.manage`  |
+
+**ไม่มี policy สำหรับ `delete` เลย** และเพิกถอน `delete` ที่ระดับ table privilege ด้วย
+— ปิดใช้ด้วย `is_active` หรือ `deleted_at` แทน (FR-MST-008)
+
+`school_settings` และ `fiscal_years` ใช้ `settings.manage` ไม่ใช่ `masters.manage`
+เพราะกระทบทั้งระบบ ไม่ใช่การแก้ข้อมูลอ้างอิงตามปกติ
