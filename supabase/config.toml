@@ -1,0 +1,38 @@
+# ค่าตั้ง Supabase local development
+# เอกสารอ้างอิง: https://supabase.com/docs/guides/local-development
+project_id = "school-procurement-system"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 17
+
+[studio]
+enabled = true
+port = 54323
+
+[storage]
+enabled = true
+# ขนาดไฟล์แนบสูงสุด — ต้องสอดคล้องกับการตรวจฝั่ง server (ข้อ 14.1)
+file_size_limit = "10MiB"
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/auth/callback"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+
+# FR-AUTH-002 — ปิดการสมัครสมาชิกสาธารณะ ผู้ดูแลเป็นผู้สร้างบัญชีเท่านั้น
+enable_signup = false
+
+[auth.email]
+enable_signup = false
+enable_confirmations = true
+double_confirm_changes = true
