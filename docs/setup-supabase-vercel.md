@@ -163,6 +163,34 @@ Vercel → เลือกโปรเจกต์ → **Settings** → **Enviro
 หรือยังไม่มีฟีเจอร์ที่ใช้ (`SENTRY_DSN`, buckets, `SUPABASE_SERVICE_ROLE_KEY`)
 ส่วน `APP_COMMIT_SHA` Vercel เติมให้เอง
 
+### เมื่อ Vercel เตือนเรื่อง public prefix
+
+Vercel จะขึ้นข้อความประมาณนี้เมื่อใส่ตัวแปรที่ขึ้นต้นด้วย `NEXT_PUBLIC_`:
+
+> _Remove the public framework prefix to keep this value private._
+> _Public prefixes expose values to the browser. If that's safe, change the variable to Config._
+
+**ให้เลือกเปลี่ยนเป็น Config — อย่าลบ prefix**
+
+Vercel เตือนไว้ก่อนเป็นค่าเริ่มต้น เพราะโดยทั่วไปคนมักเผลอใส่ค่าลับด้วย prefix นี้
+แต่กรณีของเราคือกรณีที่ค่าเหล่านี้ **ต้องเปิดเผยจริง ๆ**:
+
+| ตัวแปร                          | ทำไมต้องให้เบราว์เซอร์เห็น                                                       |
+| ------------------------------- | -------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_APP_URL`           | เป็น URL ของเว็บเอง ซึ่งผู้ใช้เห็นอยู่แล้วในแถบที่อยู่                           |
+| `NEXT_PUBLIC_SUPABASE_URL`      | เบราว์เซอร์ต้องรู้ว่าจะยิงคำขอเข้าสู่ระบบไปที่ไหน                                |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase ออกแบบให้เป็น public key ทุก query ที่ใช้กุญแจนี้ยังถูก RLS กรองอีกชั้น |
+
+> ⚠️ **ถ้าลบ prefix ออก เว็บจะพังทันที**
+>
+> Next.js ฝังค่าลง client bundle เฉพาะตัวแปรที่ขึ้นต้นด้วย `NEXT_PUBLIC_` เท่านั้น
+> และแทนค่าด้วยการ match ชื่อแบบข้อความตรง ๆ ตอน build
+> ถ้าเปลี่ยนชื่อ เบราว์เซอร์จะได้ `undefined` แล้วหน้าเข้าสู่ระบบจะใช้งานไม่ได้
+> (ดู `src/lib/env/client.ts`)
+>
+> ค่าที่เป็นความลับจริงอย่าง `SUPABASE_SERVICE_ROLE_KEY` **ห้าม**ใส่ prefix นี้เด็ดขาด
+> และต้องเก็บเป็น Environment Variable แบบปกติเสมอ
+
 > ⚠️ **ตั้งค่าแล้วต้อง Redeploy** — Deployments → เลือกตัวล่าสุด → เมนู `···` → **Redeploy**
 > ค่าใหม่ไม่มีผลกับ deployment ที่ build ไปแล้ว
 
