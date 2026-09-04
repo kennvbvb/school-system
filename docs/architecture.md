@@ -66,6 +66,11 @@ app/ ──▶ features/ ──▶ components/
 
 - `20260903000100_core_identity.sql` — departments, positions, profiles, RBAC, audit_events
 - `20260903000200_rls_policies.sql` — RLS ทุกตาราง + `has_permission()`
+- `seed-reference.sql` — สิทธิ์/บทบาทที่ผูกกับโค้ด รันทุก environment
+- `seed-sample.sql` — หน่วยงานและตำแหน่งตัวอย่าง เฉพาะ local/preview
+- `20260904000100_master_data.sql` — school_settings, fiscal_years, locations,
+  vendors, funding_sources, projects, units, item_categories
+- `20260904000200_master_data_rls.sql` — RLS ของตารางข้อมูลพื้นฐาน
 
 ### แอปพลิเคชัน
 
@@ -92,3 +97,5 @@ app/ ──▶ features/ ──▶ components/
 
 ตาราง `procurements`, `inventory_*`, `assets`, `document_templates`, `issued_documents`
 และ domain service ที่ทำ transaction หลายตาราง — อยู่ใน Phase 3 ถึง 6
+
+หน้าจอจัดการข้อมูลพื้นฐาน (`/admin/master-data/*`) ยังไม่ได้สร้าง — schema และโดเมนพร้อมแล้ว
