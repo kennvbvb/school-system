@@ -107,8 +107,14 @@ describe('findInvalidPublicEnvVars', () => {
   });
 
   it('ไม่ทำให้ค่าหลุดออกมาทางผลลัพธ์', () => {
-    // ผลลัพธ์ถูกนำไป log และแสดงบนหน้าจอ จึงต้องมีแต่ชื่อตัวแปรเท่านั้น
-    const secretish = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.secret ที่ไม่ใช่ url';
+    /*
+     * ผลลัพธ์ถูกนำไป log และแสดงบนหน้าจอ จึงต้องมีแต่ชื่อตัวแปรเท่านั้น
+     *
+     * ตั้งใจไม่ใช้ค่าที่หน้าตาเหมือน token จริง (เช่นสตริงแบบ JWT) เพราะ
+     * gitleaks จะจับว่าเป็น secret ที่หลุดเข้ารีโป ซึ่งเป็นการเตือนที่ถูกต้อง
+     * สิ่งที่ test นี้ต้องการคือค่าที่ระบุตัวได้ ไม่ใช่ค่าที่มี entropy สูง
+     */
+    const secretish = 'ค่าลับที่ต้องไม่หลุด ไม่ใช่ url';
     const result = findInvalidPublicEnvVars(read({ ...complete, NEXT_PUBLIC_APP_URL: secretish }));
     expect(result.join(' ')).not.toContain(secretish);
     expect(result).toEqual(['NEXT_PUBLIC_APP_URL']);
