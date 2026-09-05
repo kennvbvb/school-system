@@ -69,3 +69,19 @@ test('หน้ารายการจัดซื้อจัดจ้าง�
   await page.goto('/procurements/new');
   await expect(page).toHaveURL(/\/login\?returnTo=%2Fprocurements%2Fnew$/);
 });
+
+test('หน้าข้อมูลพื้นฐานและบัญชีงบถูกกันไว้และจำปลายทางเดิม', async ({ page }) => {
+  /*
+   * หน้าเหล่านี้เปลี่ยนวงเงินและกติกาของทั้งระบบ (ปีงบประมาณ โครงการ บัญชีงบ)
+   * จึงต้องกันไว้ก่อนเข้าสู่ระบบเสมอ และต้องจำปลายทางเดิมไว้เพื่อไม่ให้ผู้ใช้
+   * ต้องไล่หาหน้าเดิมใหม่หลังเข้าสู่ระบบ
+   */
+  await page.goto('/admin/master-data');
+  await expect(page).toHaveURL(/\/login\?returnTo=%2Fadmin%2Fmaster-data$/);
+
+  await page.goto('/admin/master-data/fiscal-years');
+  await expect(page).toHaveURL(/\/login\?returnTo=%2Fadmin%2Fmaster-data%2Ffiscal-years$/);
+
+  await page.goto('/budget/accounts');
+  await expect(page).toHaveURL(/\/login\?returnTo=%2Fbudget%2Faccounts$/);
+});

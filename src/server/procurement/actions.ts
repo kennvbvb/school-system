@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { requirePermission } from '@/server/auth/guard';
 import { createSupabaseServerClient } from '@/server/supabase/server-client';
 import { recordAuditEvent } from '@/server/audit/audit-log';
+import type { ActionResult } from '@/server/action-result';
 import { procurementDraftSchema, procurementUpdateSchema } from '@/domain/procurement/schemas';
 import {
   ProcurementDraftError,
@@ -25,8 +26,8 @@ import type { ProcurementDraftInput } from '@/domain/procurement/schemas';
  * รายการย่อยผ่าน view เสมอ จึงไม่มีทางส่งยอดที่ไม่ตรงกับรายการเข้ามาได้
  */
 
-export type ActionResult<T = void> =
-  { ok: true; data: T } | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
+// นิยามอยู่ที่ src/server/action-result.ts เพื่อให้ทุก action ในระบบใช้รูปเดียวกัน
+export type { ActionResult } from '@/server/action-result';
 
 /** แปลง error เป็นข้อความที่ผู้ใช้อ่านแล้วรู้ว่าต้องทำอะไร ไม่เปิดเผยโครงสร้างภายใน */
 function toActionError(error: unknown): ActionResult<never> {

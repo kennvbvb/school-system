@@ -48,6 +48,16 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     ],
   },
   {
+    titleTh: 'งบประมาณ',
+    items: [
+      {
+        href: '/budget/accounts',
+        labelTh: 'บัญชีงบประมาณ',
+        anyOf: ['budget.read', 'budget.manage'],
+      },
+    ],
+  },
+  {
     titleTh: 'คลังพัสดุและครุภัณฑ์',
     items: [
       {
@@ -82,8 +92,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
       {
         href: '/admin/master-data',
         labelTh: 'ข้อมูลพื้นฐาน',
-        anyOf: ['masters.manage'],
-        comingSoon: true,
+        anyOf: ['masters.manage', 'settings.manage', 'budget.manage'],
       },
       { href: '/admin/audit-log', labelTh: 'Audit log', anyOf: ['audit.read'], comingSoon: true },
       { href: '/admin/system', labelTh: 'ข้อมูลระบบ', anyOf: ['settings.manage'] },

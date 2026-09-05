@@ -63,6 +63,7 @@ app/ ──▶ features/ ──▶ components/
 | Redaction   | `lib/redact.ts`                       | ตัดข้อมูลอ่อนไหวก่อนลง log     |
 | งบประมาณ    | `domain/budget/`                      | ledger, ยอดที่ใช้ได้, กฎการลง  |
 | จัดซื้อ     | `domain/procurement/`                 | schema, กฎฉบับร่าง, การทำสำเนา |
+| ฟอร์มร่วม   | `features/forms/`                     | ช่องกรอกที่ผูก label/aria ครบ  |
 
 ### ฐานข้อมูล
 
@@ -81,12 +82,17 @@ app/ ──▶ features/ ──▶ components/
   procurement_funding_allocations, attachments และ view `procurement_totals`
 - `20260906000200_procurement_draft_rls.sql` — RLS ตามความเป็นเจ้าของ
   และ trigger เพิ่ม `version` สำหรับ optimistic concurrency
+- `20260907000100_budget_movement_integrity.sql` — บังคับกฎการโอน การย้อน
+  และการคืนยอดที่เดิมอยู่เฉพาะฝั่ง TypeScript ลงมาที่ `budget_post_movement()`
 
 ### แอปพลิเคชัน
 
 - `/login` — เข้าสู่ระบบ (ไม่มีทางสมัครสมาชิก)
 - `/dashboard` — หน้าแรกหลังเข้าสู่ระบบ แสดงสิทธิ์ที่ผู้ใช้ถืออยู่
 - `/admin/system` — ตัวอย่างการบังคับสิทธิ์ที่ server (ต้องมี `settings.manage`)
+- `/admin/master-data` — ปีงบประมาณ แหล่งเงิน และโครงการ เรียงตามลำดับที่ต้องกรอก
+- `/budget/accounts` — บัญชีงบพร้อมยอด, ลงรายการ, โอนงบ, ย้อนรายการ และปิดบัญชี
+- `/procurements` — รายการจัดซื้อจัดจ้างขั้นฉบับร่าง
 - `/api/health` — health check ที่ไม่เปิดเผยข้อมูลภายใน
 - `/forbidden`, `not-found`, `error` — สถานะที่ผู้ใช้เจอได้จริง
 
@@ -105,7 +111,10 @@ app/ ──▶ features/ ──▶ components/
 
 ## ยังไม่มีในระบบ
 
-ตาราง `procurements`, `inventory_*`, `assets`, `document_templates`, `issued_documents`
-และ domain service ที่ทำ transaction หลายตาราง — อยู่ใน Phase 3 ถึง 6
+ตาราง `inventory_*`, `assets`, `document_templates`, `issued_documents`
+และ domain service ที่ทำ transaction หลายตาราง — อยู่ใน Phase 4 ถึง 6
+
+หน้าจอที่ยังไม่มี: จัดการผู้ใช้และสิทธิ์, จัดการผู้ขาย, สายอนุมัติ และ audit log
+ทั้งสี่อย่างยังต้องทำผ่าน SQL
 
 หน้าจอจัดการข้อมูลพื้นฐาน (`/admin/master-data/*`) ยังไม่ได้สร้าง — schema และโดเมนพร้อมแล้ว

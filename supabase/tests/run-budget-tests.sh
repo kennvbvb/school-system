@@ -15,7 +15,11 @@ echo "== ชุดที่ 1: constraint, RLS, การโอน และ aud
 psql "$DB_URL" -v ON_ERROR_STOP=1 -f "$HERE/budget_ledger_test.sql"
 
 echo
-echo "== ชุดที่ 2: การกันยอดพร้อมกัน =="
+echo "== ชุดที่ 2: กฎความถูกต้องของ ledger (migration 0009) =="
+psql "$DB_URL" -v ON_ERROR_STOP=1 -f "$HERE/budget_integrity_test.sql"
+
+echo
+echo "== ชุดที่ 3: การกันยอดพร้อมกัน =="
 #
 # สองคำขอกันยอด 4,000 บนบัญชีที่มีงบ 6,000 — รวมกัน 8,000
 # ถ้า budget_post_movement ไม่ล็อกแถวบัญชีก่อนอ่านยอด ทั้งคู่จะเห็นยอด 6,000

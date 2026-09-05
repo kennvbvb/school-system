@@ -5,6 +5,7 @@ import {
   coversDate,
   findFiscalYearForDate,
   requireFiscalYearForDate,
+  suggestFiscalYearRange,
 } from '@/domain/master-data/fiscal-year';
 import type { FiscalYear } from '@/domain/master-data/fiscal-year';
 
@@ -155,5 +156,58 @@ describe('assertFiscalYearValid', () => {
         YEARS,
       ),
     ).toThrow(/ทับกับปีงบประมาณ 2570/);
+  });
+});
+
+describe('suggestFiscalYearRange', () => {
+  /*
+   * กติกา 1 ต.ค. – 30 ก.ย. มาจากคำตอบของโรงเรียนต่อคำถาม Q6
+   * (docs/assumptions.md ข้อ 1) ไม่ใช่ค่าที่ระบบเดา
+   */
+  it.each([
+    [2569, '2025-10-01', '2026-09-30'],
+    [2570, '2026-10-01', '2027-09-30'],
+    [2568, '2024-10-01', '2025-09-30'],
+  ])('ปีงบประมาณ พ.ศ. %i คือ %s ถึง %s', (yearBE, startDate, endDate) => {
+    expect(suggestFiscalYearRange(yearBE)).toEqual({ startDate, endDate });
+  });
+
+  it('ช่วงที่เสนอผ่านการตรวจของ assertFiscalYearValid เสมอ', () => {
+    const yearBE = 2569;
+    const range = suggestFiscalYearRange(yearBE);
+
+    expect(() => assertFiscalYearValid({ yearBE, ...range }, [])).not.toThrow();
+  });
+
+  /*
+   * ปีที่ต่อกันต้องไม่ทับกัน มิฉะนั้นจะชน exclusion constraint ในฐานข้อมูล
+   * ตอนกดบันทึกปีถัดไป ซึ่งผู้ใช้จะไม่เข้าใจว่าทำไมค่าที่ระบบเสนอเองถึงบันทึกไม่ได้
+   */
+  it('ปีที่ต่อกันไม่ทับกัน', () => {
+    const current = suggestFiscalYearRange(2569);
+    const next = suggestFiscalYearRange(2570);
+
+    expect(next.startDate > current.endDate).toBe(true);
+
+    const existing: FiscalYear[] = [
+      { id: 'a', code: 'FY2569', yearBE: 2569, ...current, status: 'OPEN' },
+    ];
+
+    expect(() => assertFiscalYearValid({ yearBE: 2570, ...next }, existing)).not.toThrow();
+  });
+
+  it('วันสุดท้ายของปีอยู่ในช่วงของปีนั้น และวันถัดไปไม่อยู่', () => {
+    const range = suggestFiscalYearRange(2569);
+    const fiscalYear: FiscalYear = {
+      id: 'a',
+      code: 'FY2569',
+      yearBE: 2569,
+      ...range,
+      status: 'OPEN',
+    };
+
+    expect(coversDate(fiscalYear, '2026-09-30')).toBe(true);
+    expect(coversDate(fiscalYear, '2026-10-01')).toBe(false);
+    expect(coversDate(fiscalYear, '2025-09-30')).toBe(false);
   });
 });
