@@ -17,13 +17,17 @@ const requiredText = (label: string, max = 255) =>
     .min(1, { message: `กรุณากรอก${label}` })
     .max(max, { message: `${label}ต้องไม่เกิน ${max} ตัวอักษร` });
 
+/*
+ * ช่องที่ไม่บังคับ
+ *
+ * ใช้ preprocess แทน transform เพราะ transform ทำให้ key กลายเป็น "บังคับแต่เป็น
+ * undefined ได้" ในชนิดผลลัพธ์ ผู้เรียกจึงต้องระบุทุกช่องแม้ตั้งใจละไว้
+ */
 const optionalText = (max = 255) =>
-  z
-    .string()
-    .trim()
-    .max(max)
-    .optional()
-    .transform((value) => (value === '' ? undefined : value));
+  z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z.string().trim().max(max).optional(),
+  );
 
 /** รหัสอ้างอิงใช้ในเลขเอกสารและการค้นหา จึงจำกัดให้เป็นอักขระที่ปลอดภัย */
 const codeField = (label: string) =>

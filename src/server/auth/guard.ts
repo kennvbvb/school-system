@@ -72,6 +72,26 @@ export async function requirePermission(
   return user;
 }
 
+/**
+ * ตรวจว่าผู้ใช้มีสิทธิ์อย่างน้อยหนึ่งข้อในรายการ
+ *
+ * มีคู่กับ requirePermission เพราะเมนู (features/auth/navigation.ts) ใช้กติกา
+ * "อย่างใดอย่างหนึ่ง" อยู่แล้ว เช่น หน้ารายการจัดซื้อที่เปิดให้ทั้งผู้ที่เห็น
+ * เฉพาะของตนและผู้ที่เห็นทั้งหมด ถ้าไม่มีตัวนี้ หน้าเหล่านั้นจะต้องเขียน
+ * เงื่อนไขเองซึ่งทำให้กติกาการเข้าถึงกระจายออกไปจากที่เดียว
+ */
+export async function requireAnyPermission(
+  ...allowed: readonly PermissionCode[]
+): Promise<CurrentUser> {
+  const user = await requireUser();
+
+  if (!user.permissions.hasAny(allowed)) {
+    throw new AuthorizationError('FORBIDDEN', 'คุณไม่มีสิทธิ์ดำเนินการนี้');
+  }
+
+  return user;
+}
+
 /** เวอร์ชันสำหรับหน้าเว็บ: ไม่มีสิทธิ์ → ส่งไปหน้าแจ้งว่าเข้าถึงไม่ได้ */
 export async function requirePermissionForPage(
   returnTo: string,
@@ -80,6 +100,20 @@ export async function requirePermissionForPage(
   const user = await requireUserForPage(returnTo);
 
   if (!user.permissions.hasAll(required)) {
+    redirect('/forbidden');
+  }
+
+  return user;
+}
+
+/** เวอร์ชันสำหรับหน้าเว็บของ requireAnyPermission */
+export async function requireAnyPermissionForPage(
+  returnTo: string,
+  ...allowed: readonly PermissionCode[]
+): Promise<CurrentUser> {
+  const user = await requireUserForPage(returnTo);
+
+  if (!user.permissions.hasAny(allowed)) {
     redirect('/forbidden');
   }
 

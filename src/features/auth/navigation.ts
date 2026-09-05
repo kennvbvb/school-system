@@ -38,7 +38,6 @@ export const NAV_SECTIONS: readonly NavSection[] = [
         href: '/procurements',
         labelTh: 'รายการจัดซื้อจัดจ้าง',
         anyOf: ['procurement.read.own', 'procurement.read.all'],
-        comingSoon: true,
       },
       {
         href: '/approvals/inbox',
