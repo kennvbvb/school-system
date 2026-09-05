@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { suggestFiscalYearRange } from '@/domain/master-data/fiscal-year';
 import { FormError, SubmitButton, TextField } from '@/features/forms/fields';
 import { useActionForm } from '@/features/forms/use-action-form';
 import type { ActionOutcome } from '@/features/forms/use-action-form';
@@ -8,11 +9,12 @@ import type { ActionOutcome } from '@/features/forms/use-action-form';
 /**
  * ฟอร์มเพิ่มปีงบประมาณ
  *
- * **ไม่มีค่าเริ่มต้นของวันเริ่ม-สิ้นสุด** โดยเจตนา
+ * เมื่อกรอกปี พ.ศ. ระบบจะ **เสนอ** วันเริ่ม-สิ้นสุดตามกติกาที่โรงเรียนยืนยันแล้ว
+ * (1 ต.ค. ถึง 30 ก.ย. — คำตอบ Q6) แต่ยังแก้ได้ทั้งสองช่อง
  *
- * การเติม 1 ต.ค. – 30 ก.ย. ให้อัตโนมัติจะทำให้คนกรอกกดผ่านไปโดยไม่ตรวจ
- * ทั้งที่คำถาม Q6 (ปีงบประมาณของโรงเรียนเริ่มและสิ้นสุดวันใด) ยังไม่มีคำตอบ
- * ค่าที่ระบบเดาให้แล้วไม่มีใครทักท้วง คือค่าที่กลายเป็นข้อเท็จจริงผิด ๆ ในภายหลัง
+ * เสนอเฉพาะตอนที่ช่องยังว่าง ไม่เขียนทับค่าที่ผู้ใช้แก้เอง เพราะปีที่มีการเปลี่ยน
+ * ระเบียบหรือปีที่กรอกย้อนหลังอาจมีช่วงต่างออกไป และการเขียนทับจะทำให้ค่าที่ตั้งใจ
+ * แก้หายไปโดยไม่รู้ตัวเมื่อกลับไปแก้ปี พ.ศ.
  */
 export function FiscalYearForm({
   action,
@@ -37,6 +39,23 @@ export function FiscalYearForm({
       setEndDate('');
     },
   });
+
+  /*
+   * เสนอช่วงวันที่จากปี พ.ศ. ที่กรอก
+   *
+   * ปี พ.ศ. ต้องอยู่ในช่วงที่ schema ยอมรับก่อนจึงจะเสนอ มิฉะนั้นตอนพิมพ์เลข
+   * ตัวแรก ("2") จะได้ช่วงปี ค.ศ. 1459 ซึ่งเป็นค่าที่ไม่มีความหมายและกวนสายตา
+   */
+  function changeYearBE(value: string) {
+    setYearBE(value);
+
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isInteger(parsed) || parsed < 2500 || parsed > 2700) return;
+
+    const suggested = suggestFiscalYearRange(parsed);
+    if (startDate === '') setStartDate(suggested.startDate);
+    if (endDate === '') setEndDate(suggested.endDate);
+  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -69,9 +88,9 @@ export function FiscalYearForm({
           type="number"
           required
           value={yearBE}
-          onChange={setYearBE}
+          onChange={changeYearBE}
           error={form.fieldError('yearBE')}
-          hint="กรอกเป็นปีพุทธศักราช เช่น 2569"
+          hint="กรอกเป็นปีพุทธศักราช เช่น 2569 แล้วระบบจะเสนอช่วงวันที่ให้"
         />
         <TextField
           label="วันเริ่มต้น"
@@ -80,6 +99,7 @@ export function FiscalYearForm({
           value={startDate}
           onChange={setStartDate}
           error={form.fieldError('startDate')}
+          hint="ตามระเบียบคือ 1 ตุลาคม แก้ได้ถ้าปีนี้ต่างออกไป"
         />
         <TextField
           label="วันสิ้นสุด"
@@ -88,6 +108,7 @@ export function FiscalYearForm({
           value={endDate}
           onChange={setEndDate}
           error={form.fieldError('endDate')}
+          hint="ตามระเบียบคือ 30 กันยายน"
         />
       </div>
 
