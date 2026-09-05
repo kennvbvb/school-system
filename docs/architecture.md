@@ -61,6 +61,7 @@ app/ ──▶ features/ ──▶ components/
 | เลขเอกสาร   | `domain/documents/document-number.ts` | pattern token                  |
 | วันที่ไทย   | `lib/format/thai-date.ts`             | Asia/Bangkok, พ.ศ./ค.ศ.        |
 | Redaction   | `lib/redact.ts`                       | ตัดข้อมูลอ่อนไหวก่อนลง log     |
+| งบประมาณ    | `domain/budget/`                      | ledger, ยอดที่ใช้ได้, กฎการลง  |
 
 ### ฐานข้อมูล
 
@@ -71,6 +72,10 @@ app/ ──▶ features/ ──▶ components/
 - `20260904000100_master_data.sql` — school_settings, fiscal_years, locations,
   vendors, funding_sources, projects, units, item_categories
 - `20260904000200_master_data_rls.sql` — RLS ของตารางข้อมูลพื้นฐาน
+- `20260905000100_budget_ledger.sql` — budget_accounts, budget_movements,
+  view `budget_account_balances`
+- `20260905000200_budget_ledger_rls.sql` — RLS, append-only trigger และ
+  function `budget_post_movement()` / `budget_transfer()` / `budget_available()`
 
 ### แอปพลิเคชัน
 

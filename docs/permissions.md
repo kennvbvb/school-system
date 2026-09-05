@@ -38,6 +38,9 @@
 | `procurement.review`     |   ●   |      |     |  ●  |      |     |     |     |
 | `procurement.approve`    |   ●   |      |     |     |  ●   |     |     |     |
 | `procurement.cancel`     |   ●   |  ●   |     |     |      |     |     |     |
+| `budget.read`            |   ●   |  ●   |     |  ●  |  ●   |  ●  |     |  ●  |
+| `budget.manage`          |   ●   |      |     |     |      |  ●  |     |     |
+| `budget.override`        |   ●   |      |     |     |      |     |     |     |
 | `documents.preview`      |   ●   |  ●   |  ●  |  ●  |  ●   |     |     |     |
 | `documents.issue`        |   ●   |  ●   |     |     |      |     |     |     |
 | `documents.print`        |   ●   |  ●   |     |     |      |     |     |     |
