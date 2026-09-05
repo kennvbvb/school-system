@@ -7,17 +7,27 @@ School Procurement & Inventory System — เว็บแอปพลิเค�
 
 ## สถานะปัจจุบัน
 
-**Phase 1 — Foundation** เสร็จแล้ว
+**Phase 1 — Foundation** เสร็จแล้ว · **Phase 2 — Master Data** ทำฐานข้อมูลและโดเมนแล้ว ยังไม่มีหน้าจอ
 
-| มีแล้ว                                   | ยังไม่มี                         |
-| ---------------------------------------- | -------------------------------- |
-| เข้าสู่ระบบ (ปิด public sign-up)         | รายการจัดซื้อจัดจ้าง (Phase 3)   |
-| RBAC 8 บทบาท / 25 สิทธิ์                 | สายอนุมัติและเลขเอกสาร (Phase 4) |
-| RLS ทุกตาราง                             | แม่แบบและการสร้าง PDF (Phase 5)  |
-| App shell ภาษาไทยที่กรองเมนูตามสิทธิ์    | คลังวัสดุและครุภัณฑ์ (Phase 6)   |
-| โดเมนการเงิน + ข้อความเงินภาษาไทย        | รายงานและการส่งออก (Phase 7)     |
-| audit log แบบ append-only                |                                  |
-| CI, unit test, component test, E2E smoke |                                  |
+| ส่วน                                         | สถานะ                                                                         |
+| -------------------------------------------- | ----------------------------------------------------------------------------- |
+| เข้าสู่ระบบ (ปิด public sign-up)             | ใช้งานได้                                                                     |
+| RBAC 8 บทบาท / 25 สิทธิ์ และ RLS ทุกตาราง    | ใช้งานได้                                                                     |
+| App shell ภาษาไทยที่กรองเมนูตามสิทธิ์        | ใช้งานได้                                                                     |
+| โดเมนการเงิน + ข้อความเงินภาษาไทย            | ใช้งานได้                                                                     |
+| audit log แบบ append-only                    | ใช้งานได้ (ยังเขียนแยกจากธุรกรรม ดู `assumptions.md` 2.10)                    |
+| CI, unit/component test, E2E smoke           | ใช้งานได้                                                                     |
+| ตารางข้อมูลพื้นฐาน 8 ตาราง + RLS             | มี migration แล้ว                                                             |
+| โดเมนปีงบประมาณ ตรวจผู้ขายซ้ำ และ Zod schema | มีแล้ว พร้อม test                                                             |
+| **หน้าจอจัดการข้อมูลพื้นฐาน**                | **ยังไม่มี** — ยังกรอกข้อมูลผ่านหน้าเว็บไม่ได้                                |
+| budget ledger และแหล่งเงินหลายบรรทัด         | ยังไม่มี ([ADR 0008](docs/decisions/0008-budget-ledger-and-multi-funding.md)) |
+| รายการจัดซื้อจัดจ้างและ validation           | ยังไม่มี                                                                      |
+| สายอนุมัติและเลขเอกสาร                       | ยังไม่มี                                                                      |
+| แม่แบบและการสร้าง PDF                        | ยังไม่มี ([ADR 0009](docs/decisions/0009-legal-content-versioning.md))        |
+| คลังวัสดุ ครุภัณฑ์ รายงานและการส่งออก        | ยังไม่มี                                                                      |
+
+ลำดับงานถัดไป (PR-01 เป็นต้นไป) และเกณฑ์ตรวจรับแต่ละ PR อยู่ใน
+[`docs/branch-and-review-workflow.md`](docs/branch-and-review-workflow.md)
 
 แผนฉบับเต็ม: [`docs/SCHOOL_PROCUREMENT_SYSTEM_PLAN.md`](docs/SCHOOL_PROCUREMENT_SYSTEM_PLAN.md)
 
@@ -76,6 +86,8 @@ docs/                  แผน สมมติฐาน ADR และคู่
 4. **audit log แก้ไม่ได้** — append-only ทั้ง policy และ table privilege
 5. **ห้าม commit secret หรือข้อมูลจริงของโรงเรียน** — seed ทั้งหมดเป็นข้อมูลสมมติ
 6. **ตรึงเวอร์ชัน dependency** — ไม่มี `^` หรือ `~` และ commit lockfile
+7. **ไม่รับรองความถูกต้องทางกฎหมายแทนโรงเรียน** — ข้อความกฎหมายและแบบพิมพ์ที่มีผลทางราชการ
+   ต้องมีผู้มีอำนาจของโรงเรียนรับรอง ([ADR 0009](docs/decisions/0009-legal-content-versioning.md))
 
 ## เอกสาร
 
@@ -83,6 +95,9 @@ docs/                  แผน สมมติฐาน ADR และคู่
 | ---------------------------------------------------------------------------------- | --------------------------------------------------- |
 | [`docs/SCHOOL_PROCUREMENT_SYSTEM_PLAN.md`](docs/SCHOOL_PROCUREMENT_SYSTEM_PLAN.md) | PRD, spec และแผนส่งมอบฉบับเต็ม                      |
 | [`docs/assumptions.md`](docs/assumptions.md)                                       | **สิ่งที่สมมติไว้และคำถามที่โรงเรียนต้องตอบ**       |
+| [`docs/document-audit-findings.md`](docs/document-audit-findings.md)               | **ข้อค้นพบจากการตรวจเอกสารจริง และกลไกที่ต้องมี**   |
+| [`docs/branch-and-review-workflow.md`](docs/branch-and-review-workflow.md)         | branch, ลำดับ PR และ review gate                    |
+| [`docs/CONTINUATION_PLAN.md`](docs/CONTINUATION_PLAN.md)                           | แผนงานรอบถัดไป PR-00 ถึง PR-10 และ review gate      |
 | [`docs/architecture.md`](docs/architecture.md)                                     | การแบ่งชั้นและสิ่งที่มีอยู่จริง                     |
 | [`docs/data-dictionary.md`](docs/data-dictionary.md)                               | ตาราง คอลัมน์ และข้อจำกัด                           |
 | [`docs/permissions.md`](docs/permissions.md)                                       | เมทริกซ์บทบาทกับสิทธิ์                              |
@@ -95,5 +110,7 @@ docs/                  แผน สมมติฐาน ADR และคู่
 
 ## สิ่งที่ต้องได้คำตอบก่อนไปต่อ
 
-Phase 2 ขึ้นไปต้องการคำตอบจากโรงเรียนหลายข้อ — ดูรายการทั้งหมดพร้อมระดับความเร่งด่วนใน
-[`docs/assumptions.md`](docs/assumptions.md) หัวข้อ 3
+งานถัดไปต้องการคำตอบจากโรงเรียน 30 ข้อ — รวมถึงข้อเท็จจริงจากเอกสารต้นฉบับที่ระบบ
+**ห้ามเดาแล้วเขียนทับ** (วันที่ที่ไม่มีจริง เลขเอกสารที่ซ้ำ ยอดวัสดุที่ไม่ตรง)
+
+ดูรายการทั้งหมดพร้อมระดับความเร่งด่วนใน [`docs/assumptions.md`](docs/assumptions.md) หัวข้อ 3
