@@ -223,3 +223,21 @@ export const itemCategorySchema = z.object({
 });
 
 export type ItemCategoryInput = z.infer<typeof itemCategorySchema>;
+
+// -----------------------------------------------------------------------------
+// การปิดและเปิดปีงบประมาณใหม่
+// -----------------------------------------------------------------------------
+
+/**
+ * การปิดปีงบประมาณเป็นเหตุการณ์ทางธุรการ ไม่ใช่การแก้ค่าในตาราง
+ *
+ * เหตุผลบังคับทั้งตอนปิดและตอนเปิดใหม่ เพราะทั้งสองอย่างเปลี่ยนว่าใครบันทึก
+ * รายการอะไรได้บ้าง การเปิดปีที่ปิดไปแล้วกลับมาโดยไม่มีเหตุผลกำกับ ทำให้
+ * ผู้ตรวจสอบแยกไม่ออกระหว่าง "ปิดผิดแล้วแก้" กับ "เปิดกลับมาเพื่อแก้ตัวเลข"
+ */
+export const fiscalYearStatusChangeSchema = z.object({
+  fiscalYearId: z.uuid(),
+  reason: requiredText('เหตุผล', 1000),
+});
+
+export type FiscalYearStatusChangeInput = z.infer<typeof fiscalYearStatusChangeSchema>;

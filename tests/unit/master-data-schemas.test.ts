@@ -3,6 +3,7 @@ import {
   budgetAmountSchema,
   businessDateSchema,
   fiscalYearSchema,
+  fiscalYearStatusChangeSchema,
   itemCategorySchema,
   projectSchema,
   schoolSettingsSchema,
@@ -176,5 +177,34 @@ describe('unitSchema และ itemCategorySchema', () => {
     const valid = { code: 'C01', nameTh: 'วัสดุสำนักงาน', kind: 'SUPPLY' as const };
     expect(itemCategorySchema.parse(valid).kind).toBe('SUPPLY');
     expect(itemCategorySchema.safeParse({ ...valid, kind: 'OTHER' }).success).toBe(false);
+  });
+});
+
+describe('fiscalYearStatusChangeSchema', () => {
+  const fiscalYearId = 'aaaaaaaa-0000-4000-8000-000000000001';
+
+  /*
+   * เหตุผลบังคับทั้งตอนปิดและตอนเปิดใหม่
+   *
+   * การเปิดปีที่ปิดไปแล้วกลับมาโดยไม่มีเหตุผลกำกับ ทำให้ผู้ตรวจสอบแยกไม่ออก
+   * ระหว่าง "ปิดผิดแล้วแก้" กับ "เปิดกลับมาเพื่อแก้ตัวเลข"
+   */
+  it.each([undefined, '', '   '])('ปฏิเสธเมื่อไม่มีเหตุผล (%s)', (reason) => {
+    expect(fiscalYearStatusChangeSchema.safeParse({ fiscalYearId, reason }).success).toBe(false);
+  });
+
+  it('ยอมรับเมื่อมีเหตุผล', () => {
+    const result = fiscalYearStatusChangeSchema.safeParse({
+      fiscalYearId,
+      reason: 'ปิดปีตามหนังสือสั่งการ',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('ปฏิเสธ id ที่ไม่ใช่ uuid', () => {
+    expect(
+      fiscalYearStatusChangeSchema.safeParse({ fiscalYearId: 'x', reason: 'เหตุผล' }).success,
+    ).toBe(false);
   });
 });
