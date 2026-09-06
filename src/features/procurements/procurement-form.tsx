@@ -3,6 +3,10 @@
 import { useId, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
+  CLASSIFICATION_LABELS_TH,
+  METHOD_LABELS_TH,
+  PROCUREMENT_CLASSIFICATIONS,
+  PROCUREMENT_METHODS,
   procurementDraftSchema,
   TAX_MODES,
   TAX_MODE_LABELS_TH,
@@ -64,6 +68,17 @@ export interface ProcurementFormValues {
   vendorId: string;
   requestDate: string;
   requiredDate: string;
+  reportDate: string;
+  approvedDate: string;
+  selectionDate: string;
+  orderOrAgreementDate: string;
+  deliveryOrServiceDate: string;
+  inspectionDate: string;
+  sentToFinanceDate: string;
+  classification: string;
+  procurementMethod: string;
+  methodLegalBasisCode: string;
+  isEmergency: boolean;
   note: string;
   items: Omit<ItemDraft, 'key'>[];
   fundingAllocations: Omit<FundingDraft, 'key'>[];
@@ -74,6 +89,37 @@ export interface SubmitResult {
   error?: string;
   fieldErrors?: Record<string, string[]>;
 }
+
+/**
+ * ช่องวันที่ตามขั้นตอนงาน เรียงตามลำดับที่ต้องเกิดจริง
+ *
+ * ลำดับที่แสดงต้องตรงกับ PROCUREMENT_MILESTONES ในโดเมน เพราะผู้ใช้อ่านลำดับ
+ * จากหน้าจอแล้วเข้าใจว่าอะไรควรมาก่อนอะไร ถ้าเรียงต่างกันจะสับสน
+ */
+const MILESTONE_FIELDS = [
+  { key: 'reportDate', labelTh: 'วันที่รายงานขอซื้อ/ขอจ้าง' },
+  { key: 'approvedDate', labelTh: 'วันที่อนุมัติ' },
+  { key: 'selectionDate', labelTh: 'วันที่คัดเลือกผู้ขาย' },
+  { key: 'orderOrAgreementDate', labelTh: 'วันที่สั่งซื้อ/ทำข้อตกลง' },
+  { key: 'deliveryOrServiceDate', labelTh: 'วันที่ส่งมอบ/ใช้บริการ' },
+  { key: 'inspectionDate', labelTh: 'วันที่ตรวจรับ' },
+  { key: 'sentToFinanceDate', labelTh: 'วันที่ส่งเบิกการเงิน' },
+] as const satisfies readonly { key: keyof ProcurementFormValues; labelTh: string }[];
+
+/** ช่องที่ปล่อยว่างได้ — สตริงว่างต้องกลายเป็น undefined ก่อนส่ง */
+const OPTIONAL_TEXT_FIELDS = [
+  'requiredDate',
+  'reportDate',
+  'approvedDate',
+  'selectionDate',
+  'orderOrAgreementDate',
+  'deliveryOrServiceDate',
+  'inspectionDate',
+  'sentToFinanceDate',
+  'classification',
+  'procurementMethod',
+  'methodLegalBasisCode',
+] as const satisfies readonly (keyof ProcurementFormValues)[];
 
 let keyCounter = 0;
 const nextKey = () => `row-${++keyCounter}`;
@@ -186,8 +232,16 @@ export function ProcurementForm({
     setFieldErrors({});
     setIsSubmitting(true);
 
+    /*
+     * ช่องที่ผู้ใช้ไม่ได้กรอกมีค่าเป็นสตริงว่างจาก input ของ HTML
+     * ต้องส่งเป็น undefined ไม่ใช่ '' เพราะ schema ถือว่า '' คือรูปแบบวันที่ผิด
+     * ไม่ใช่ "ละไว้" — ถ้าไม่แปลง ผู้ใช้ที่เว้นช่องวันที่จะบันทึกไม่ได้เลย
+     */
     const result = await onSubmit({
       ...values,
+      ...Object.fromEntries(
+        OPTIONAL_TEXT_FIELDS.map((key) => [key, values[key] === '' ? undefined : values[key]]),
+      ),
       items: items.map(({ key: _key, ...rest }) => rest),
       fundingAllocations: funding.map(({ key: _key, ...rest }) => rest),
     });
@@ -328,6 +382,70 @@ export function ProcurementForm({
             />
           </label>
 
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium">ประเภทงาน</span>
+            <select
+              value={values.classification}
+              onChange={(event) => update('classification', event.target.value)}
+              className="w-full rounded-md border border-slate-300 px-3 py-2"
+            >
+              <option value="">— เลือก —</option>
+              {PROCUREMENT_CLASSIFICATIONS.map((code) => (
+                <option key={code} value={code}>
+                  {CLASSIFICATION_LABELS_TH[code]}
+                </option>
+              ))}
+            </select>
+            {fieldError('classification') ? (
+              <span className="mt-1 block text-sm text-rose-700">
+                {fieldError('classification')}
+              </span>
+            ) : null}
+          </label>
+
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium">วิธีจัดหา</span>
+            <select
+              value={values.procurementMethod}
+              onChange={(event) => update('procurementMethod', event.target.value)}
+              className="w-full rounded-md border border-slate-300 px-3 py-2"
+            >
+              <option value="">— เลือก —</option>
+              {PROCUREMENT_METHODS.map((code) => (
+                <option key={code} value={code}>
+                  {METHOD_LABELS_TH[code]}
+                </option>
+              ))}
+            </select>
+            {fieldError('procurementMethod') ? (
+              <span className="mt-1 block text-sm text-rose-700">
+                {fieldError('procurementMethod')}
+              </span>
+            ) : null}
+          </label>
+
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium">ฐานอำนาจตามระเบียบ</span>
+            <input
+              value={values.methodLegalBasisCode}
+              onChange={(event) => update('methodLegalBasisCode', event.target.value)}
+              className="w-full rounded-md border border-slate-300 px-3 py-2"
+            />
+            <span className="mt-1 block text-sm text-slate-600">
+              กรอกเป็นรหัสอ้างอิง ข้อความเต็มของระเบียบมาจากรุ่นที่ประกาศใช้ ไม่ได้พิมพ์ที่นี่
+            </span>
+          </label>
+
+          <label className="flex items-center gap-2 md:col-span-2">
+            <input
+              type="checkbox"
+              checked={values.isEmergency}
+              onChange={(event) => update('isEmergency', event.target.checked)}
+              className="h-4 w-4 rounded border-slate-300"
+            />
+            <span className="text-sm font-medium">เป็นกรณีเร่งด่วน</span>
+          </label>
+
           <label className="block md:col-span-2">
             <span className="mb-1 block text-sm font-medium">เหตุผลและความจำเป็น</span>
             <textarea
@@ -337,6 +455,35 @@ export function ProcurementForm({
               className="w-full rounded-md border border-slate-300 px-3 py-2"
             />
           </label>
+        </div>
+      </section>
+
+      <section aria-labelledby="milestones-heading" className="space-y-4">
+        <div className="space-y-1">
+          <h2 id="milestones-heading" className="text-lg font-semibold">
+            วันที่ตามขั้นตอนงาน
+          </h2>
+          <p className="text-sm text-slate-600">
+            กรอกเท่าที่เกิดขึ้นจริงแล้ว ช่องที่ยังไม่ถึงขั้นให้เว้นว่างไว้ —
+            ระบบตรวจลำดับก่อน-หลังให้ตอนกดส่งอนุมัติ
+          </p>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          {MILESTONE_FIELDS.map((field) => (
+            <label key={field.key} className="block">
+              <span className="mb-1 block text-sm font-medium">{field.labelTh}</span>
+              <input
+                type="date"
+                value={values[field.key]}
+                onChange={(event) => update(field.key, event.target.value)}
+                className="w-full rounded-md border border-slate-300 px-3 py-2"
+              />
+              {fieldError(field.key) ? (
+                <span className="mt-1 block text-sm text-rose-700">{fieldError(field.key)}</span>
+              ) : null}
+            </label>
+          ))}
         </div>
       </section>
 

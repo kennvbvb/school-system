@@ -34,6 +34,8 @@ insert into public.permissions (code, description_th) values
   ('procurement.cancel',      'ยกเลิกรายการ'),
   ('budget.read',             'ดูยอดงบประมาณและรายการเคลื่อนไหว'),
   ('budget.manage',           'จัดสรร ปรับ และโอนงบประมาณ'),
+  ('procurement.override_validation',
+                              'อนุมัติข้อยกเว้นกฎลำดับเวลาและกฎที่ยกเว้นได้ พร้อมเหตุผล'),
   ('budget.override',         'อนุมัติให้ลงรายการเกินยอดคงเหลือ พร้อมเหตุผล'),
   ('documents.preview',       'ดูตัวอย่างเอกสาร'),
   ('documents.issue',         'ออกเอกสารจริงและจองเลขที่เอกสาร'),
@@ -107,6 +109,7 @@ insert into public.role_permissions (role_code, permission_code) values
   ('APPROVER', 'masters.read'),
   ('APPROVER', 'procurement.read.all'),
   ('APPROVER', 'procurement.approve'),
+  ('APPROVER', 'procurement.override_validation'),
   ('APPROVER', 'budget.read'),
   ('APPROVER', 'documents.preview'),
 

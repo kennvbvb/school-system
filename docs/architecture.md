@@ -64,6 +64,8 @@ app/ ──▶ features/ ──▶ components/
 | งบประมาณ    | `domain/budget/`                      | ledger, ยอดที่ใช้ได้, กฎการลง  |
 | จัดซื้อ     | `domain/procurement/`                 | schema, กฎฉบับร่าง, การทำสำเนา |
 | ฟอร์มร่วม   | `features/forms/`                     | ช่องกรอกที่ผูก label/aria ครบ  |
+| กฎและผลตรวจ | `domain/validation/`                  | รหัสกฎ ระดับ และกฎที่ยกเว้นได้ |
+| ลำดับเวลา   | `domain/procurement/chronology.ts`    | F-03, F-04 และช่วงปีงบประมาณ   |
 
 ### ฐานข้อมูล
 
@@ -84,6 +86,10 @@ app/ ──▶ features/ ──▶ components/
   และ trigger เพิ่ม `version` สำหรับ optimistic concurrency
 - `20260907000100_budget_movement_integrity.sql` — บังคับกฎการโอน การย้อน
   และการคืนยอดที่เดิมอยู่เฉพาะฝั่ง TypeScript ลงมาที่ `budget_post_movement()`
+- `20260908000100_procurement_chronology.sql` — ชุดวันที่ตามขั้นตอนงาน ประเภทงาน
+  วิธีจัดหา ข้อยกเว้น และตาราง `procurement_validations`
+- `20260908000200_procurement_submit.sql` — `procurement_check_submit()` และ
+  `procurement_submit()` ที่ตรวจกฎครบชุดในทรานแซกชันเดียวกับการเปลี่ยนสถานะ
 
 ### แอปพลิเคชัน
 

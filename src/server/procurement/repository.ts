@@ -1,7 +1,11 @@
 import 'server-only';
 import { createSupabaseServerClient } from '@/server/supabase/server-client';
 import type { ProcurementStatus } from '@/domain/procurement/status';
-import type { TaxModeCode } from '@/domain/procurement/schemas';
+import type {
+  ProcurementClassification,
+  ProcurementMethodCode,
+  TaxModeCode,
+} from '@/domain/procurement/schemas';
 
 /**
  * การเข้าถึงข้อมูลรายการจัดซื้อ
@@ -147,6 +151,21 @@ export interface ProcurementDetail extends ProcurementSummary {
   vendorId: string | null;
   requiredDate: string | null;
   note: string | null;
+
+  /* ชุดวันที่และการจัดประเภทที่เพิ่มใน PR-03 (แผนข้อ 6.3) */
+  reportDate: string | null;
+  approvedDate: string | null;
+  selectionDate: string | null;
+  orderOrAgreementDate: string | null;
+  deliveryOrServiceDate: string | null;
+  inspectionDate: string | null;
+  sentToFinanceDate: string | null;
+  classification: ProcurementClassification | null;
+  procurementMethod: ProcurementMethodCode | null;
+  methodLegalBasisCode: string | null;
+  isEmergency: boolean;
+  exceptionReason: string | null;
+
   items: ProcurementItemRow[];
   fundingAllocations: FundingAllocationRow[];
 }
@@ -159,6 +178,18 @@ interface DetailRow extends ListRow {
   vendor_id: string | null;
   required_date: string | null;
   note: string | null;
+  report_date: string | null;
+  approved_date: string | null;
+  selection_date: string | null;
+  order_or_agreement_date: string | null;
+  delivery_or_service_date: string | null;
+  inspection_date: string | null;
+  sent_to_finance_date: string | null;
+  classification: ProcurementClassification | null;
+  procurement_method: ProcurementMethodCode | null;
+  method_legal_basis_code: string | null;
+  is_emergency: boolean;
+  exception_reason: string | null;
 }
 
 interface ItemRow {
@@ -189,7 +220,11 @@ export async function getProcurement(id: string): Promise<ProcurementDetail | nu
     .from('procurements')
     .select(
       'id, reference, subject, purpose, status, tax_mode, fiscal_year_id, department_id, ' +
-        'vendor_id, request_date, required_date, note, version, created_by, vendors(name)',
+        'vendor_id, request_date, required_date, note, version, created_by, vendors(name), ' +
+        'report_date, approved_date, selection_date, order_or_agreement_date, ' +
+        'delivery_or_service_date, inspection_date, sent_to_finance_date, ' +
+        'classification, procurement_method, method_legal_basis_code, is_emergency, ' +
+        'exception_reason',
     )
     .eq('id', id)
     .is('deleted_at', null)
@@ -233,6 +268,18 @@ export async function getProcurement(id: string): Promise<ProcurementDetail | nu
     requestDate: row.request_date,
     requiredDate: row.required_date,
     note: row.note,
+    reportDate: row.report_date,
+    approvedDate: row.approved_date,
+    selectionDate: row.selection_date,
+    orderOrAgreementDate: row.order_or_agreement_date,
+    deliveryOrServiceDate: row.delivery_or_service_date,
+    inspectionDate: row.inspection_date,
+    sentToFinanceDate: row.sent_to_finance_date,
+    classification: row.classification,
+    procurementMethod: row.procurement_method,
+    methodLegalBasisCode: row.method_legal_basis_code,
+    isEmergency: row.is_emergency,
+    exceptionReason: row.exception_reason,
     version: row.version,
     createdBy: row.created_by,
     vendorName: row.vendors?.name ?? null,
@@ -256,4 +303,50 @@ export async function getProcurement(id: string): Promise<ProcurementDetail | nu
       note: row.note,
     })),
   };
+}
+
+export interface ValidationRow {
+  ruleCode: string;
+  severity: 'ERROR' | 'WARNING' | 'INFO';
+  message: string;
+  field: string | null;
+  overridden: boolean;
+}
+
+/**
+ * ผลตรวจกฎของรายการหนึ่ง ณ ขณะนี้
+ *
+ * เรียก RPC `procurement_check_submit` ซึ่งเป็น **ฟังก์ชันเดียวกับที่
+ * `procurement_submit` เรียกตอนบังคับจริง** จึงไม่มีทางที่หน้าจอจะแสดงผลต่างจาก
+ * สิ่งที่ระบบจะบังคับตอนกดส่ง
+ */
+export async function checkProcurementRules(id: string): Promise<ValidationRow[]> {
+  const supabase = await createSupabaseServerClient();
+
+  /*
+   * RPC ที่คืนเป็น table ถูก type ของ supabase-js มองว่าอาจเป็นแถวเดียวหรือหลายแถว
+   * จึงต้องระบุชนิดของผลลัพธ์เอง ไม่ใช้ .returns<T[]>() ซึ่งชนกับ type ของ rpc()
+   */
+  interface CheckRow {
+    rule_code: string;
+    severity: 'ERROR' | 'WARNING' | 'INFO';
+    message: string;
+    field: string | null;
+  }
+
+  const { data, error } = await supabase.rpc('procurement_check_submit', {
+    p_procurement_id: id,
+  });
+
+  if (error) throw new Error(error.message);
+
+  const rows = (data ?? []) as CheckRow[];
+
+  return rows.map((row) => ({
+    ruleCode: row.rule_code,
+    severity: row.severity,
+    message: row.message,
+    field: row.field,
+    overridden: false,
+  }));
 }
