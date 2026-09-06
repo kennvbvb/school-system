@@ -24,36 +24,37 @@
 
 `●` = มีสิทธิ์เริ่มต้น
 
-| สิทธิ์                   | ADMIN | PROC | REQ | REV | APPR | FIN | INV | AUD |
-| ------------------------ | :---: | :--: | :-: | :-: | :--: | :-: | :-: | :-: |
-| `users.read`             |   ●   |      |     |     |      |     |     |     |
-| `users.manage`           |   ●   |      |     |     |      |     |     |     |
-| `masters.read`           |   ●   |  ●   |  ●  |  ●  |  ●   |  ●  |  ●  |  ●  |
-| `masters.manage`         |   ●   |      |     |     |      |     |     |     |
-| `procurement.read.own`   |   ●   |      |  ●  |     |      |     |     |     |
-| `procurement.read.all`   |   ●   |  ●   |     |  ●  |  ●   |  ●  |  ●  |  ●  |
-| `procurement.create`     |   ●   |  ●   |  ●  |     |      |     |     |     |
-| `procurement.edit_draft` |   ●   |  ●   |  ●  |     |      |     |     |     |
-| `procurement.submit`     |   ●   |  ●   |  ●  |     |      |     |     |     |
-| `procurement.review`     |   ●   |      |     |  ●  |      |     |     |     |
-| `procurement.approve`    |   ●   |      |     |     |  ●   |     |     |     |
-| `procurement.cancel`     |   ●   |  ●   |     |     |      |     |     |     |
-| `budget.read`            |   ●   |  ●   |     |  ●  |  ●   |  ●  |     |  ●  |
-| `budget.manage`          |   ●   |      |     |     |      |  ●  |     |     |
-| `budget.override`        |   ●   |      |     |     |      |     |     |     |
-| `documents.preview`      |   ●   |  ●   |  ●  |  ●  |  ●   |     |     |     |
-| `documents.issue`        |   ●   |  ●   |     |     |      |     |     |     |
-| `documents.print`        |   ●   |  ●   |     |     |      |     |     |     |
-| `inventory.read`         |   ●   |  ●   |     |     |      |     |  ●  |  ●  |
-| `inventory.receive`      |   ●   |  ●   |     |     |      |     |  ●  |     |
-| `inventory.issue`        |   ●   |      |     |     |      |     |  ●  |     |
-| `inventory.adjust`       |   ●   |      |     |     |      |     |  ●  |     |
-| `assets.read`            |   ●   |  ●   |     |     |      |     |  ●  |  ●  |
-| `assets.manage`          |   ●   |      |     |     |      |     |  ●  |     |
-| `reports.export`         |   ●   |  ●   |     |     |      |  ●  |  ●  |  ●  |
-| `audit.read`             |   ●   |      |     |     |      |     |     |  ●  |
-| `templates.manage`       |   ●   |      |     |     |      |     |     |     |
-| `settings.manage`        |   ●   |      |     |     |      |     |     |     |
+| สิทธิ์                            | ADMIN | PROC | REQ | REV | APPR | FIN | INV | AUD |
+| --------------------------------- | :---: | :--: | :-: | :-: | :--: | :-: | :-: | :-: |
+| `users.read`                      |   ●   |      |     |     |      |     |     |     |
+| `users.manage`                    |   ●   |      |     |     |      |     |     |     |
+| `masters.read`                    |   ●   |  ●   |  ●  |  ●  |  ●   |  ●  |  ●  |  ●  |
+| `masters.manage`                  |   ●   |      |     |     |      |     |     |     |
+| `procurement.read.own`            |   ●   |      |  ●  |     |      |     |     |     |
+| `procurement.read.all`            |   ●   |  ●   |     |  ●  |  ●   |  ●  |  ●  |  ●  |
+| `procurement.create`              |   ●   |  ●   |  ●  |     |      |     |     |     |
+| `procurement.edit_draft`          |   ●   |  ●   |  ●  |     |      |     |     |     |
+| `procurement.submit`              |   ●   |  ●   |  ●  |     |      |     |     |     |
+| `procurement.review`              |   ●   |      |     |  ●  |      |     |     |     |
+| `procurement.approve`             |   ●   |      |     |     |  ●   |     |     |     |
+| `procurement.cancel`              |   ●   |  ●   |     |     |      |     |     |     |
+| `procurement.override_validation` |   ●   |      |     |     |  ●   |     |     |     |
+| `budget.read`                     |   ●   |  ●   |     |  ●  |  ●   |  ●  |     |  ●  |
+| `budget.manage`                   |   ●   |      |     |     |      |  ●  |     |     |
+| `budget.override`                 |   ●   |      |     |     |      |     |     |     |
+| `documents.preview`               |   ●   |  ●   |  ●  |  ●  |  ●   |     |     |     |
+| `documents.issue`                 |   ●   |  ●   |     |     |      |     |     |     |
+| `documents.print`                 |   ●   |  ●   |     |     |      |     |     |     |
+| `inventory.read`                  |   ●   |  ●   |     |     |      |     |  ●  |  ●  |
+| `inventory.receive`               |   ●   |  ●   |     |     |      |     |  ●  |     |
+| `inventory.issue`                 |   ●   |      |     |     |      |     |  ●  |     |
+| `inventory.adjust`                |   ●   |      |     |     |      |     |  ●  |     |
+| `assets.read`                     |   ●   |  ●   |     |     |      |     |  ●  |  ●  |
+| `assets.manage`                   |   ●   |      |     |     |      |     |  ●  |     |
+| `reports.export`                  |   ●   |  ●   |     |     |      |  ●  |  ●  |  ●  |
+| `audit.read`                      |   ●   |      |     |     |      |     |     |  ●  |
+| `templates.manage`                |   ●   |      |     |     |      |     |     |     |
+| `settings.manage`                 |   ●   |      |     |     |      |     |     |     |
 
 ## กฎที่บังคับด้วย test
 
