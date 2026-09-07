@@ -85,3 +85,18 @@ test('หน้าข้อมูลพื้นฐานและบัญช�
   await page.goto('/budget/accounts');
   await expect(page).toHaveURL(/\/login\?returnTo=%2Fbudget%2Faccounts$/);
 });
+
+test('หน้าทะเบียนผู้ขายถูกกันไว้และจำปลายทางเดิม', async ({ page }) => {
+  /*
+   * ตารางผู้ขายมีเลขประจำตัวผู้เสียภาษี ที่อยู่ และเบอร์โทรของนิติบุคคลจริง
+   * จึงต้องกันไว้ก่อนเข้าสู่ระบบเสมอ รวมถึงหน้าแก้ไขรายตัวซึ่งเป็น dynamic route
+   * — route แบบ [id] มักถูกลืมเมื่อเพิ่ม matcher ของ proxy
+   */
+  await page.goto('/admin/master-data/vendors');
+  await expect(page).toHaveURL(/\/login\?returnTo=%2Fadmin%2Fmaster-data%2Fvendors$/);
+
+  await page.goto('/admin/master-data/vendors/00000000-0000-4000-8000-000000000001');
+  await expect(page).toHaveURL(
+    /\/login\?returnTo=%2Fadmin%2Fmaster-data%2Fvendors%2F00000000-0000-4000-8000-000000000001$/,
+  );
+});

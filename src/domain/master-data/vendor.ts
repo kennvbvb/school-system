@@ -167,3 +167,76 @@ export function findDuplicateVendors(
 export function hasBlockingDuplicate(findings: readonly DuplicateFinding[]): boolean {
   return findings.some((finding) => finding.severity === 'BLOCK');
 }
+
+/**
+ * ตัดสินว่าผู้ขายรายนี้บันทึกได้หรือไม่ จากผลตรวจซ้ำและคำยืนยันของผู้ใช้
+ *
+ * อยู่ที่ชั้นโดเมนคู่กับนิยาม BLOCK/WARN ไม่ใช่ที่ server action เพราะ
+ * "ข้อไหนยกเว้นได้" เป็นกติกาของกฎ ไม่ใช่ของผู้เรียก — แนวเดียวกับ
+ * `isOverridableRule()` ของ validation engine ถ้าปล่อยให้ผู้เรียกตัดสินเอง
+ * จะมีผู้เรียกบางรายเผลอยอมให้ข้าม BLOCK ได้
+ *
+ * @param acknowledged ผู้ใช้ยืนยันว่าเป็นคนละราย — ยกเว้นได้เฉพาะ WARN
+ * @returns `rejection` เป็นข้อความภาษาไทยเมื่อบันทึกไม่ได้ และ `findings`
+ *          คือรายการที่พบ เพื่อให้ผู้เรียกบันทึกลง audit เมื่อบันทึกผ่าน
+ */
+export function checkVendorDuplicateRule(
+  draft: VendorDraft,
+  existing: readonly VendorSummary[],
+  acknowledged: boolean,
+): { rejection: string | null; findings: DuplicateFinding[] } {
+  const findings = findDuplicateVendors(draft, existing);
+
+  if (hasBlockingDuplicate(findings)) {
+    const reasons = findings
+      .filter((finding) => finding.severity === 'BLOCK')
+      .map((finding) => finding.reasonTh)
+      .join(' และ ');
+
+    return {
+      rejection:
+        `บันทึกไม่ได้เพราะเป็นผู้ขายรายเดิม — ${reasons} ` +
+        'หากต้องการแก้ไขข้อมูล ให้แก้ที่ผู้ขายรายเดิมแทนการเพิ่มใหม่',
+      findings,
+    };
+  }
+
+  if (findings.length > 0 && !acknowledged) {
+    const reasons = findings.map((finding) => finding.reasonTh).join(' และ ');
+
+    return {
+      rejection:
+        `อาจซ้ำกับผู้ขายที่มีอยู่ — ${reasons} ` +
+        'ถ้าเป็นคนละราย ให้ติ๊ก "ยืนยันว่าเป็นผู้ขายคนละราย" แล้วบันทึกอีกครั้ง',
+      findings,
+    };
+  }
+
+  return { rejection: null, findings };
+}
+
+/**
+ * `vendors.address` เป็น jsonb ไม่ใช่ text
+ *
+ * MVP เก็บที่อยู่เป็นบรรทัดเดียวตามที่เอกสารจริงเขียนไว้ แต่การออกใบสั่งซื้อ
+ * ในภายหลังต้องแยก ตำบล/อำเภอ/จังหวัด/ไปรษณีย์ เพื่อจัดหน้ากระดาษ การเก็บเป็น
+ * jsonb ตั้งแต่ต้นทำให้เพิ่มช่องย่อยได้โดยไม่ต้องย้ายข้อมูลเดิม
+ *
+ * อ่านค่าแบบไม่เชื่อรูปร่างที่ได้มา เพราะ jsonb เก็บอะไรก็ได้ — แถวที่ import
+ * เข้ามาหรือแก้ด้วย SQL อาจไม่ได้อยู่ในรูปนี้ และหน้าจอต้องไม่พังเพราะแถวเดียว
+ */
+export interface VendorAddress {
+  line?: string;
+}
+
+export function vendorAddressToLine(value: unknown): string | null {
+  if (value && typeof value === 'object' && 'line' in value) {
+    const line = (value as VendorAddress).line;
+    return typeof line === 'string' && line.trim() !== '' ? line : null;
+  }
+  return null;
+}
+
+export function vendorLineToAddress(line: string | null | undefined): VendorAddress | null {
+  return line?.trim() ? { line: line.trim() } : null;
+}

@@ -44,6 +44,22 @@ const SECTIONS = [
   },
 ] as const;
 
+/**
+ * ทะเบียนที่ไม่ได้อยู่ในลำดับข้างบน
+ *
+ * ผู้ขายไม่ใช่เงื่อนไขก่อนสร้างรายการจัดซื้อ — บางวิธีจัดหายังไม่มีผู้ขาย ณ วัน
+ * ที่ทำรายงานขอซื้อ การใส่ไว้เป็น "ขั้นที่ 5" จะบอกผู้ใช้ผิดว่าต้องมีก่อน
+ */
+const REGISTRIES = [
+  {
+    href: '/admin/master-data/vendors',
+    title: 'ผู้ขาย',
+    description:
+      'เพิ่มได้ตลอดเวลา ระบบเตือนเมื่อชื่อคล้ายรายที่มีอยู่ และกันไม่ให้ซ้ำเมื่อเลขผู้เสียภาษีตรงกัน',
+    permission: 'masters.manage',
+  },
+] as const;
+
 export default async function MasterDataPage() {
   const viewer = await requireAnyPermissionForPage(
     '/admin/master-data',
@@ -86,6 +102,36 @@ export default async function MasterDataPage() {
           );
         })}
       </ol>
+
+      <section aria-labelledby="registries-heading" className="space-y-3">
+        <h2 id="registries-heading" className="text-lg font-semibold">
+          ทะเบียนอื่น
+        </h2>
+        <ul className="grid gap-4 md:grid-cols-2">
+          {REGISTRIES.map((registry) => {
+            const allowed = viewer.permissions.has(registry.permission);
+
+            return (
+              <li key={registry.href} className="rounded-lg border border-slate-200 bg-white p-5">
+                {allowed ? (
+                  <Link
+                    href={{ pathname: registry.href }}
+                    className="block text-lg font-semibold text-sky-800 underline underline-offset-2"
+                  >
+                    {registry.title}
+                  </Link>
+                ) : (
+                  <p className="text-lg font-semibold text-slate-400">{registry.title}</p>
+                )}
+                <p className="mt-2 text-sm text-slate-600">{registry.description}</p>
+                {allowed ? null : (
+                  <p className="mt-2 text-sm text-slate-500">คุณไม่มีสิทธิ์จัดการส่วนนี้</p>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </section>
     </div>
   );
 }

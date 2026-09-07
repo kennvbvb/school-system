@@ -165,22 +165,75 @@ export function FormError({ message }: { message: string | null }) {
   );
 }
 
+/**
+ * `disabled` แยกจาก `isSubmitting` เพราะข้อความบนปุ่มต่างกัน
+ *
+ * ปุ่มที่กดไม่ได้เพราะข้อมูลยังผิดต้องคงข้อความเดิมไว้ ไม่ใช่ขึ้นว่า "กำลังบันทึก…"
+ * ซึ่งจะบอกผู้ใช้ผิดว่าระบบกำลังทำงานอยู่
+ */
 export function SubmitButton({
   isSubmitting,
   children,
   variant = 'primary',
+  disabled = false,
 }: {
   isSubmitting: boolean;
   children: React.ReactNode;
   variant?: 'primary' | 'danger';
+  disabled?: boolean;
 }) {
   const base = 'rounded-md px-4 py-2 text-sm font-medium text-white disabled:opacity-60';
   const color =
     variant === 'danger' ? 'bg-rose-700 hover:bg-rose-600' : 'bg-slate-900 hover:bg-slate-700';
 
   return (
-    <button type="submit" disabled={isSubmitting} className={`${base} ${color}`}>
+    <button type="submit" disabled={isSubmitting || disabled} className={`${base} ${color}`}>
       {isSubmitting ? 'กำลังบันทึก…' : children}
     </button>
+  );
+}
+
+/**
+ * ช่องติ๊กยืนยัน
+ *
+ * ไม่ใช้ `FieldShell` เพราะ checkbox วาง label ไว้ข้างขวาของกล่อง ไม่ใช่ด้านบน
+ * แต่ยังผูก label กับ input ด้วย id และผูกคำอธิบายด้วย aria-describedby เหมือนกัน
+ */
+export function CheckboxField({
+  label,
+  checked,
+  onChange,
+  hint,
+  className,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  hint?: string | undefined;
+  className?: string;
+}) {
+  const id = useId();
+
+  return (
+    <div className={className ?? 'block'}>
+      <div className="flex items-start gap-2">
+        <input
+          id={id}
+          type="checkbox"
+          checked={checked}
+          aria-describedby={hint ? `${id}-hint` : undefined}
+          onChange={(event) => onChange(event.target.checked)}
+          className="mt-1 h-4 w-4 rounded border-slate-400 focus:ring-2 focus:ring-slate-400"
+        />
+        <label htmlFor={id} className="text-sm font-medium">
+          {label}
+        </label>
+      </div>
+      {hint ? (
+        <span id={`${id}-hint`} className="mt-1 block pl-6 text-sm text-slate-600">
+          {hint}
+        </span>
+      ) : null}
+    </div>
   );
 }

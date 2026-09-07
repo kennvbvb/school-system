@@ -154,11 +154,22 @@ PK ประกอบ `(role_code, permission_code)` — กันการผ�
 | `vendor_code`               | text  | unique               |
 | `tax_id`                    | text  | ตัวเลข 13 หลัก       |
 | `branch_no`                 | text  | ตัวเลขไม่เกิน 5 หลัก |
-| `address`                   | jsonb |                      |
+| `address`                   | jsonb | `{ "line": "..." }`  |
 | `deleted_at` / `deleted_by` | —     | soft delete          |
+
+**`address` เป็น jsonb ไม่ใช่ text** — MVP เก็บเป็นบรรทัดเดียวใต้คีย์ `line`
+ตามที่เอกสารจริงเขียน แต่การจัดหน้าใบสั่งซื้อในภายหลังต้องแยก ตำบล/อำเภอ/จังหวัด/
+ไปรษณีย์ การเก็บเป็น jsonb ตั้งแต่ต้นทำให้เพิ่มช่องย่อยได้โดยไม่ต้องย้ายข้อมูลเดิม
+แปลงค่าที่ `vendorAddressToLine()` / `vendorLineToAddress()` ใน
+`src/domain/master-data/vendor.ts` ซึ่งอ่านค่าที่ไม่ได้อยู่ในรูปนี้เป็น `null`
+เพราะแถวที่แก้ด้วย SQL หรือ import เข้ามาอาจมีรูปร่างอื่น
 
 **`vendors_tax_id_branch_unique`** — unique เฉพาะแถวที่ `deleted_at is null`
 เพื่อให้บันทึกผู้ขายรายเดิมใหม่ได้หลังลบ และรวมสาขาเพราะนิติบุคคลเดียวกันมีหลายสาขา
+
+index นี้ใช้ `coalesce(branch_no, '00000')` ตรงกับ `normalizeBranch()` ในชั้นโดเมน
+— ถ้าค่า default สองที่นี้ไม่ตรงกัน หน้าจอจะบอกว่าไม่ซ้ำแล้วฐานข้อมูลปฏิเสธ
+ซึ่งผู้ใช้แก้ตามไม่ได้ `supabase/tests/vendor_registry_test.sql` ล็อกข้อนี้ไว้
 
 **`vendors_name_trgm_idx`** — GIN trigram index สำหรับค้นชื่อใกล้เคียง (FR-MST-009)
 
