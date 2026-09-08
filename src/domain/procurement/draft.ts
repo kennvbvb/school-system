@@ -129,9 +129,27 @@ export function assertReadyToSubmit(draft: ProcurementDraftInput): void {
  * วันที่ไม่คัดลอกเพราะวันขอของรายการใหม่คือวันที่ทำสำเนา ไม่ใช่วันของรายการเดิม
  * ถ้าคัดลอกไป ผู้ใช้ที่กดสำเนาแล้วส่งเลยจะได้เอกสารที่ลงวันที่ย้อนหลังโดยไม่ตั้งใจ
  * ซึ่งเป็นข้อผิดพลาดชนิดเดียวกับที่พบในไฟล์จริง (F-04)
+ *
+ * `isEmergency` ก็ไม่คัดลอกด้วยเหตุผลเดียวกัน — ความเร่งด่วนเป็นข้อเท็จจริงของ
+ * คำขอครั้งนั้น ไม่ใช่คุณสมบัติของสิ่งที่ซื้อ สำเนาที่ติดธงเร่งด่วนมาโดยที่ผู้ใช้
+ * ไม่ได้ตั้งใจ จะได้สิทธิ์ยกเว้นกฎลำดับเวลาไปโดยไม่มีใครทักท้วง
+ *
+ * ส่วน `classification` และ `procurementMethod` **คัดลอก** เพราะเป็นคุณสมบัติของ
+ * สิ่งที่ซื้อและวิธีที่ใช้ซื้อ ซึ่งมักเหมือนเดิมจริงเมื่อทำรายการซ้ำ
  */
 export interface CloneResult {
-  draft: Omit<ProcurementDraftInput, 'requestDate' | 'requiredDate'>;
+  draft: Omit<
+    ProcurementDraftInput,
+    | 'requestDate'
+    | 'requiredDate'
+    | 'reportDate'
+    | 'approvedDate'
+    | 'selectionDate'
+    | 'orderOrAgreementDate'
+    | 'deliveryOrServiceDate'
+    | 'inspectionDate'
+    | 'sentToFinanceDate'
+  >;
   /** ช่องที่ผู้ใช้ต้องกรอกใหม่เอง */
   clearedFields: readonly string[];
 }
@@ -145,12 +163,31 @@ export function cloneDraft(source: ProcurementDraftInput): CloneResult {
       fiscalYearId: source.fiscalYearId,
       departmentId: source.departmentId,
       vendorId: source.vendorId,
+      classification: source.classification,
+      procurementMethod: source.procurementMethod,
+      methodLegalBasisCode: source.methodLegalBasisCode,
+      // ความเร่งด่วนต้องตัดสินใหม่ทุกครั้ง ไม่ติดมากับสำเนา
+      isEmergency: false,
       note: source.note,
       items: source.items.map((item) => ({ ...item })),
       // แหล่งเงินไม่คัดลอก เพราะยอดของรายการใหม่อาจต่างไป
       // และการกันยอดงบต้องเกิดจากการตัดสินใจใหม่เสมอ
       fundingAllocations: [],
     },
-    clearedFields: ['requestDate', 'requiredDate', 'fundingAllocations', 'status', 'reference'],
+    clearedFields: [
+      'requestDate',
+      'requiredDate',
+      'reportDate',
+      'approvedDate',
+      'selectionDate',
+      'orderOrAgreementDate',
+      'deliveryOrServiceDate',
+      'inspectionDate',
+      'sentToFinanceDate',
+      'isEmergency',
+      'fundingAllocations',
+      'status',
+      'reference',
+    ],
   };
 }

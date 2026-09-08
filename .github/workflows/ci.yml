@@ -100,6 +100,11 @@ jobs:
         # ยอดที่ view คำนวณต้องตรงกับที่โดเมนคำนวณทุกสตางค์
         run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/procurement_draft_test.sql
 
+      - name: ทดสอบการส่งอนุมัติและกฎลำดับเวลาบนฐานข้อมูลจริง
+        # จำลองข้อผิดพลาดจากไฟล์จริง (F-02, F-03, F-04) และพิสูจน์ว่าการเรียก RPC
+        # ตรงโดยไม่ผ่านหน้าจอก็ถูกปฏิเสธเหมือนกัน
+        run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/procurement_submit_test.sql
+
   e2e:
     name: End-to-end smoke tests
     runs-on: ubuntu-latest

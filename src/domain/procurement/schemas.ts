@@ -103,6 +103,50 @@ export const fundingAllocationSchema = z.object({
 export type FundingAllocationInput = z.infer<typeof fundingAllocationSchema>;
 
 // -----------------------------------------------------------------------------
+// ประเภทงานและวิธีจัดหา (แผนข้อ 6.3)
+// -----------------------------------------------------------------------------
+
+export const PROCUREMENT_CLASSIFICATIONS = [
+  'GOODS',
+  'SERVICE',
+  'CONSTRUCTION',
+  'RENTAL',
+  'UTILITY',
+  'TRAINING_OR_COMPENSATION',
+  'OTHER',
+] as const;
+
+export type ProcurementClassification = (typeof PROCUREMENT_CLASSIFICATIONS)[number];
+
+export const CLASSIFICATION_LABELS_TH: Readonly<Record<ProcurementClassification, string>> = {
+  GOODS: 'ซื้อวัสดุ/ครุภัณฑ์',
+  SERVICE: 'จ้างบริการ',
+  CONSTRUCTION: 'จ้างก่อสร้าง/ปรับปรุง',
+  RENTAL: 'เช่า',
+  UTILITY: 'ค่าสาธารณูปโภค',
+  TRAINING_OR_COMPENSATION: 'ค่าตอบแทน/ฝึกอบรม',
+  OTHER: 'อื่น ๆ',
+};
+
+export const PROCUREMENT_METHODS = [
+  'SPECIFIC',
+  'PRICE_COMPARISON',
+  'SELECTION',
+  'AUCTION',
+  'OTHER',
+] as const;
+
+export type ProcurementMethodCode = (typeof PROCUREMENT_METHODS)[number];
+
+export const METHOD_LABELS_TH: Readonly<Record<ProcurementMethodCode, string>> = {
+  SPECIFIC: 'วิธีเฉพาะเจาะจง',
+  PRICE_COMPARISON: 'วิธีเปรียบเทียบราคา',
+  SELECTION: 'วิธีคัดเลือก',
+  AUCTION: 'วิธีประกาศเชิญชวน',
+  OTHER: 'วิธีอื่น',
+};
+
+// -----------------------------------------------------------------------------
 // รายการจัดซื้อ (ขั้น draft)
 // -----------------------------------------------------------------------------
 
@@ -122,6 +166,26 @@ export const procurementDraftSchema = z.object({
   vendorId: z.uuid().optional(),
   requestDate: businessDateSchema,
   requiredDate: businessDateSchema.optional(),
+
+  /*
+   * ชุดวันที่ตามลำดับงานจริง — ทุกช่องไม่บังคับในขั้นร่าง (แผนข้อ 6.3, 7.2)
+   *
+   * ที่นี่ตรวจแค่ว่า "เป็นวันที่ที่มีอยู่จริงในปฏิทินไหม" (ปิด F-03)
+   * ส่วนลำดับก่อน-หลังตรวจที่ chronology.ts เพราะต้องดูหลายช่องพร้อมกัน
+   */
+  reportDate: businessDateSchema.optional(),
+  approvedDate: businessDateSchema.optional(),
+  selectionDate: businessDateSchema.optional(),
+  orderOrAgreementDate: businessDateSchema.optional(),
+  deliveryOrServiceDate: businessDateSchema.optional(),
+  inspectionDate: businessDateSchema.optional(),
+  sentToFinanceDate: businessDateSchema.optional(),
+
+  classification: z.enum(PROCUREMENT_CLASSIFICATIONS).optional(),
+  procurementMethod: z.enum(PROCUREMENT_METHODS).optional(),
+  methodLegalBasisCode: optionalText(64),
+  isEmergency: z.boolean().default(false),
+
   note: optionalText(),
   items: z.array(procurementItemSchema).default([]),
   fundingAllocations: z.array(fundingAllocationSchema).default([]),
@@ -141,3 +205,18 @@ export const procurementUpdateSchema = procurementDraftSchema.extend({
 });
 
 export type ProcurementUpdateInput = z.infer<typeof procurementUpdateSchema>;
+
+/**
+ * ข้อมูลที่ต้องส่งมาตอนกดส่งอนุมัติ
+ *
+ * รับแค่สามอย่าง — id, version ที่ผู้ใช้เห็น และเหตุผลของข้อยกเว้น (ถ้ามี)
+ * **ไม่รับผลตรวจจากผู้เรียก** เพราะถ้ารับ ผู้ที่เรียก API ตรงจะส่งผลตรวจปลอมว่า
+ * "ผ่านหมดแล้ว" มาได้ ผลตรวจต้องคำนวณที่ server เท่านั้น
+ */
+export const procurementSubmitSchema = z.object({
+  id: z.uuid(),
+  expectedVersion: z.number().int().min(1, { message: 'ไม่พบเวอร์ชันของรายการที่กำลังส่ง' }),
+  exceptionReason: optionalText(1000),
+});
+
+export type ProcurementSubmitInput = z.infer<typeof procurementSubmitSchema>;

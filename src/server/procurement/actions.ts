@@ -5,7 +5,13 @@ import { requirePermission } from '@/server/auth/guard';
 import { createSupabaseServerClient } from '@/server/supabase/server-client';
 import { recordAuditEvent } from '@/server/audit/audit-log';
 import type { ActionResult } from '@/server/action-result';
-import { procurementDraftSchema, procurementUpdateSchema } from '@/domain/procurement/schemas';
+import { headers } from 'next/headers';
+import { REQUEST_ID_HEADER, generateRequestId, sanitizeRequestId } from '@/lib/request-id';
+import {
+  procurementDraftSchema,
+  procurementSubmitSchema,
+  procurementUpdateSchema,
+} from '@/domain/procurement/schemas';
 import {
   ProcurementDraftError,
   assertLinesConsistent,
@@ -128,6 +134,17 @@ export async function createProcurementDraft(
         vendor_id: parsed.data.vendorId ?? null,
         request_date: parsed.data.requestDate,
         required_date: parsed.data.requiredDate ?? null,
+        report_date: parsed.data.reportDate ?? null,
+        approved_date: parsed.data.approvedDate ?? null,
+        selection_date: parsed.data.selectionDate ?? null,
+        order_or_agreement_date: parsed.data.orderOrAgreementDate ?? null,
+        delivery_or_service_date: parsed.data.deliveryOrServiceDate ?? null,
+        inspection_date: parsed.data.inspectionDate ?? null,
+        sent_to_finance_date: parsed.data.sentToFinanceDate ?? null,
+        classification: parsed.data.classification ?? null,
+        procurement_method: parsed.data.procurementMethod ?? null,
+        method_legal_basis_code: parsed.data.methodLegalBasisCode ?? null,
+        is_emergency: parsed.data.isEmergency,
         note: parsed.data.note ?? null,
         created_by: user.id,
       })
@@ -208,6 +225,17 @@ export async function updateProcurementDraft(
         vendor_id: parsed.data.vendorId ?? null,
         request_date: parsed.data.requestDate,
         required_date: parsed.data.requiredDate ?? null,
+        report_date: parsed.data.reportDate ?? null,
+        approved_date: parsed.data.approvedDate ?? null,
+        selection_date: parsed.data.selectionDate ?? null,
+        order_or_agreement_date: parsed.data.orderOrAgreementDate ?? null,
+        delivery_or_service_date: parsed.data.deliveryOrServiceDate ?? null,
+        inspection_date: parsed.data.inspectionDate ?? null,
+        sent_to_finance_date: parsed.data.sentToFinanceDate ?? null,
+        classification: parsed.data.classification ?? null,
+        procurement_method: parsed.data.procurementMethod ?? null,
+        method_legal_basis_code: parsed.data.methodLegalBasisCode ?? null,
+        is_emergency: parsed.data.isEmergency,
         note: parsed.data.note ?? null,
         updated_by: user.id,
       })
@@ -250,6 +278,64 @@ export async function updateProcurementDraft(
       .maybeSingle<{ version: number }>();
 
     return { ok: true, data: { version: fresh?.version ?? updated.version } };
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+/**
+ * ส่งรายการเข้าสู่การอนุมัติ
+ *
+ * **ไม่ตรวจกฎที่นี่** — เรียก RPC `procurement_submit` ซึ่งตรวจครบทั้งชุดใน
+ * ทรานแซกชันเดียวกับการเปลี่ยนสถานะ (แผนข้อ 7.2)
+ *
+ * ถ้าตรวจซ้ำที่นี่แล้วค่อยเรียก RPC จะเกิดช่องว่างระหว่างตรวจกับเขียน และที่แย่กว่า
+ * คือจะมีกฎสองชุดที่ต้องดูแลให้ตรงกัน ซึ่งเป็นที่มาของบั๊กที่หายาก
+ */
+export async function submitProcurement(input: unknown): Promise<ActionResult<void>> {
+  try {
+    const user = await requirePermission('procurement.submit');
+
+    const parsed = procurementSubmitSchema.safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, error: 'ข้อมูลที่ส่งมาไม่ถูกต้อง' };
+    }
+
+    const supabase = await createSupabaseServerClient();
+    const headerList = await headers();
+    const requestId = sanitizeRequestId(headerList.get(REQUEST_ID_HEADER)) ?? generateRequestId();
+
+    const { error } = await supabase.rpc('procurement_submit', {
+      p_procurement_id: parsed.data.id,
+      p_expected_version: parsed.data.expectedVersion,
+      p_exception_reason: parsed.data.exceptionReason ?? null,
+      p_request_id: requestId,
+    });
+
+    if (error) {
+      /*
+       * ข้อความจาก RPC เป็นภาษาไทยที่ผู้ใช้แก้ตามได้อยู่แล้ว จึงส่งต่อตรง ๆ
+       * ส่วนข้อความที่ PostgreSQL สร้างเอง (ภาษาอังกฤษ) ไม่ส่งออกไป
+       * เพราะเปิดเผยชื่อ constraint และโครงสร้างภายในโดยไม่จำเป็น
+       */
+      if (/^[\u0E00-\u0E7F]/.test(error.message)) {
+        return { ok: false, error: error.message };
+      }
+      throw new Error(error.message);
+    }
+
+    await recordAuditEvent({
+      action: 'procurement.status_change',
+      entityType: 'procurement',
+      entityId: parsed.data.id,
+      actorId: user.id,
+      after: { status: 'PENDING_REVIEW' },
+      metadata: { via: 'ui' },
+    });
+
+    revalidatePath('/procurements');
+    revalidatePath(`/procurements/${parsed.data.id}`);
+    return { ok: true, data: undefined };
   } catch (error) {
     return toActionError(error);
   }
