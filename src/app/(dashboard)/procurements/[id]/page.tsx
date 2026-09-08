@@ -2,8 +2,12 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireAnyPermissionForPage } from '@/server/auth/guard';
-import { getProcurement } from '@/server/procurement/repository';
+import { checkProcurementRules, getProcurement } from '@/server/procurement/repository';
+import { submitProcurement } from '@/server/procurement/actions';
+import { ValidationSummary } from '@/features/procurements/validation-summary';
+import { ProcurementSubmitButton } from '@/features/procurements/submit-button';
 import { isEditable } from '@/domain/procurement/draft';
+import { isOverridableRule, isRuleCode } from '@/domain/validation/rules';
 import { TAX_MODE_LABELS_TH } from '@/domain/procurement/schemas';
 import { formatThaiDate } from '@/lib/format/thai-date';
 import { satangToThaiBahtText } from '@/domain/money/thai-baht-text';
@@ -36,6 +40,36 @@ export default async function ProcurementDetailPage({
     isEditable(procurement.status) &&
     viewer.permissions.has('procurement.edit_draft') &&
     (viewer.permissions.has('procurement.read.all') || procurement.createdBy === viewer.id);
+
+  /*
+   * ตรวจกฎเฉพาะสถานะที่ยังส่งอนุมัติได้
+   *
+   * รายการที่ผ่านขั้นนี้ไปแล้วถูกตรวจไปแล้ว ณ ตอนส่ง และผลถูกบันทึกไว้ใน
+   * procurement_validations การตรวจใหม่ตอนนี้จะได้ผลตามข้อมูลปัจจุบัน
+   * ซึ่งไม่ใช่สิ่งที่ผู้อนุมัติเห็นตอนนั้น จึงไม่แสดงเพื่อไม่ให้เข้าใจผิด
+   */
+  const canSubmit =
+    isEditable(procurement.status) &&
+    viewer.permissions.has('procurement.submit') &&
+    (viewer.permissions.has('procurement.read.all') || procurement.createdBy === viewer.id);
+
+  const findings = canSubmit ? await checkProcurementRules(procurement.id) : [];
+  const canOverride = viewer.permissions.has('procurement.override_validation');
+  const errorFindings = findings.filter((finding) => finding.severity === 'ERROR');
+  /*
+   * ใช้ isOverridableRule จากชั้นโดเมน ไม่เขียนรายการซ้ำที่นี่
+   *
+   * รายการกฎที่ยกเว้นได้มีอยู่แล้วสองที่คือโดเมนและ SQL ซึ่งจำเป็นเพราะคนละชั้น
+   * การเพิ่มที่สามในหน้าจอจะทำให้มีจุดที่ลืมแก้ตอนเพิ่มกฎใหม่
+   *
+   * รหัสที่ฐานข้อมูลส่งมาเป็น text จึงต้องผ่าน isRuleCode ก่อน — รหัสที่ระบบ
+   * ไม่รู้จักถือว่ายกเว้นไม่ได้ ซึ่งเป็นค่าเริ่มต้นที่ปลอดภัยกว่า
+   */
+  const isOverridable = (code: string) => isRuleCode(code) && isOverridableRule(code);
+  const hasOverridableErrors = errorFindings.some((finding) => isOverridable(finding.ruleCode));
+  const hasBlockingErrors = errorFindings.some(
+    (finding) => !canOverride || !isOverridable(finding.ruleCode),
+  );
 
   const grandTotalSatang = decimalStringToSatang(procurement.totals.grandTotal);
   const fundingSatang = decimalStringToSatang(procurement.totals.fundingTotal);
@@ -71,6 +105,37 @@ export default async function ProcurementDetailPage({
           ) : null}
         </div>
       </header>
+
+      {canSubmit ? (
+        <section aria-labelledby="validation-heading" className="space-y-4">
+          <h2 id="validation-heading" className="text-lg font-semibold">
+            ผลตรวจก่อนส่งอนุมัติ
+          </h2>
+
+          <ValidationSummary findings={findings} procurementId={procurement.id} canEdit={canEdit} />
+
+          <ProcurementSubmitButton
+            procurementId={procurement.id}
+            version={procurement.version}
+            hasBlockingErrors={hasBlockingErrors}
+            hasOverridableErrors={hasOverridableErrors}
+            canOverride={canOverride}
+            action={submitProcurement}
+          />
+        </section>
+      ) : null}
+
+      {procurement.exceptionReason ? (
+        <section
+          aria-labelledby="exception-heading"
+          className="rounded-lg border border-amber-300 bg-amber-50 p-5 text-amber-900"
+        >
+          <h2 id="exception-heading" className="mb-2 font-semibold">
+            รายการนี้ส่งอนุมัติโดยใช้ข้อยกเว้น
+          </h2>
+          <p>{procurement.exceptionReason}</p>
+        </section>
+      ) : null}
 
       <section
         aria-labelledby="general-heading"

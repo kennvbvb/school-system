@@ -100,6 +100,11 @@ jobs:
         # ยอดที่ view คำนวณต้องตรงกับที่โดเมนคำนวณทุกสตางค์
         run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/procurement_draft_test.sql
 
+      - name: ทดสอบการส่งอนุมัติและกฎลำดับเวลาบนฐานข้อมูลจริง
+        # จำลองข้อผิดพลาดจากไฟล์จริง (F-02, F-03, F-04) และพิสูจน์ว่าการเรียก RPC
+        # ตรงโดยไม่ผ่านหน้าจอก็ถูกปฏิเสธเหมือนกัน
+        run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/procurement_submit_test.sql
+
       - name: ทดสอบทะเบียนผู้ขายบนฐานข้อมูลจริง
         # กฎ BLOCK ของผู้ขายซ้ำถูกบังคับด้วย unique index ไม่ใช่ด้วย TypeScript
         # และ "ไม่ระบุสาขา" ต้องแปลว่าสาขา 00000 เหมือนที่ชั้นโดเมนแปลง
