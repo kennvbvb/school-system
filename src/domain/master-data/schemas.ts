@@ -20,14 +20,20 @@ const requiredText = (label: string, max = 255) =>
 /*
  * ช่องที่ไม่บังคับ
  *
+ * ฟอร์ม HTML ส่งช่องที่เว้นว่างมาเป็น `''` ไม่ใช่ undefined ทุก schema ที่ไม่บังคับ
+ * จึงต้องแปลงค่าว่างก่อน มิฉะนั้นผู้ใช้ที่ตั้งใจไม่กรอกจะได้ข้อความว่ารูปแบบผิด
+ * ทั้งที่ช่องนั้นไม่บังคับ และไม่มีทางแก้ให้ผ่านนอกจากกรอกค่าปลอมลงไป
+ *
  * ใช้ preprocess แทน transform เพราะ transform ทำให้ key กลายเป็น "บังคับแต่เป็น
  * undefined ได้" ในชนิดผลลัพธ์ ผู้เรียกจึงต้องระบุทุกช่องแม้ตั้งใจละไว้
  */
-const optionalText = (max = 255) =>
+const blankToUndefined = <T extends z.ZodTypeAny>(schema: T) =>
   z.preprocess(
     (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
-    z.string().trim().max(max).optional(),
+    schema,
   );
+
+const optionalText = (max = 255) => blankToUndefined(z.string().trim().max(max).optional());
 
 /** รหัสอ้างอิงใช้ในเลขเอกสารและการค้นหา จึงจำกัดให้เป็นอักขระที่ปลอดภัย */
 const codeField = (label: string) =>
@@ -69,10 +75,12 @@ export const businessDateSchema = z
  * อีเมลถูกบังคับเป็นตัวพิมพ์เล็กด้วย check constraint ในฐานข้อมูล
  * จึงแปลงให้ตรงกันตั้งแต่ขอบเขตนี้ แทนที่จะปล่อยให้ insert ล้มภายหลัง
  */
-const emailField = z
-  .email({ message: 'รูปแบบอีเมลไม่ถูกต้อง' })
-  .transform((value) => value.toLowerCase())
-  .optional();
+const emailField = blankToUndefined(
+  z
+    .email({ message: 'รูปแบบอีเมลไม่ถูกต้อง' })
+    .transform((value) => value.toLowerCase())
+    .optional(),
+);
 
 // -----------------------------------------------------------------------------
 // ข้อมูลโรงเรียน (FR-MST-001)
@@ -85,7 +93,7 @@ export const schoolSettingsSchema = z
     addressTh: requiredText('ที่อยู่', 1000),
     phone: optionalText(32),
     email: emailField,
-    taxId: thaiTaxIdSchema.optional(),
+    taxId: blankToUndefined(thaiTaxIdSchema.optional()),
     logoPath: optionalText(500),
     effectiveFrom: businessDateSchema,
     effectiveTo: businessDateSchema.optional(),
@@ -126,12 +134,14 @@ export type FiscalYearInput = z.infer<typeof fiscalYearSchema>;
 export const vendorSchema = z.object({
   vendorCode: codeField('รหัสผู้ขาย'),
   name: requiredText('ชื่อผู้ขาย'),
-  taxId: thaiTaxIdSchema.optional(),
-  branchNo: z
-    .string()
-    .trim()
-    .regex(/^[0-9]{1,5}$/, { message: 'รหัสสาขาต้องเป็นตัวเลขไม่เกิน 5 หลัก' })
-    .optional(),
+  taxId: blankToUndefined(thaiTaxIdSchema.optional()),
+  branchNo: blankToUndefined(
+    z
+      .string()
+      .trim()
+      .regex(/^[0-9]{1,5}$/, { message: 'รหัสสาขาต้องเป็นตัวเลขไม่เกิน 5 หลัก' })
+      .optional(),
+  ),
   address: optionalText(1000),
   contactName: optionalText(),
   phone: optionalText(32),
@@ -141,6 +151,27 @@ export const vendorSchema = z.object({
 });
 
 export type VendorInput = z.infer<typeof vendorSchema>;
+
+/**
+ * `acknowledgedDuplicate` — ผู้ใช้ยืนยันว่าผู้ขายที่ชื่อคล้ายกันเป็นคนละราย
+ *
+ * อยู่ใน schema ไม่ใช่แค่ในฟอร์ม เพราะ server เป็นผู้บังคับกฎนี้จริง
+ * (ข้อ 4.2) การเรียก API ตรงโดยไม่ส่งค่านี้ต้องถูกปฏิเสธเหมือนกดผ่านหน้าจอ
+ *
+ * ค่านี้ยกเว้นได้เฉพาะคำเตือน "ชื่อคล้าย" เท่านั้น ส่วนเลขผู้เสียภาษีซ้ำ
+ * เป็นข้อมูลเดียวกันแน่นอน จึงยกเว้นไม่ได้ไม่ว่าจะส่งค่านี้มาหรือไม่
+ */
+export const vendorCreateSchema = vendorSchema.extend({
+  acknowledgedDuplicate: z.boolean().default(false),
+});
+
+export type VendorCreateInput = z.infer<typeof vendorCreateSchema>;
+
+export const vendorUpdateSchema = vendorCreateSchema.extend({
+  vendorId: z.uuid({ message: 'รหัสผู้ขายไม่ถูกต้อง' }),
+});
+
+export type VendorUpdateInput = z.infer<typeof vendorUpdateSchema>;
 
 // -----------------------------------------------------------------------------
 // โครงการและแหล่งเงิน (FR-MST-006)

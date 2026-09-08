@@ -10,10 +10,14 @@ import {
   fiscalYearStatusChangeSchema,
   fundingSourceSchema,
   projectSchema,
+  vendorCreateSchema,
+  vendorUpdateSchema,
 } from '@/domain/master-data/schemas';
 import { FiscalYearError, assertFiscalYearValid } from '@/domain/master-data/fiscal-year';
-import { listFiscalYears } from './repository';
+import { checkVendorDuplicateRule, vendorLineToAddress } from '@/domain/master-data/vendor';
+import { listFiscalYears, listVendors } from './repository';
 import type { ActionResult } from '@/server/action-result';
+import type { DuplicateFinding } from '@/domain/master-data/vendor';
 
 /**
  * Server action ของข้อมูลพื้นฐาน
@@ -39,6 +43,14 @@ function describeDatabaseError(message: string): string | null {
   if (message.includes('funding_sources_code_key')) return 'มีรหัสแหล่งเงินนี้อยู่แล้ว';
   if (message.includes('projects_fiscal_year_id_code_key'))
     return 'มีรหัสโครงการนี้อยู่แล้วในปีงบประมาณเดียวกัน';
+  if (message.includes('vendors_vendor_code_key')) return 'มีรหัสผู้ขายนี้อยู่แล้ว';
+  /*
+   * unique index ของเลขผู้เสียภาษี+สาขา เป็นชั้นบังคับสุดท้ายของกฎ BLOCK
+   * ถ้ามาถึงตรงนี้แปลว่ามีผู้ใช้อีกคนบันทึกผู้ขายรายเดียวกันแทรกเข้ามาระหว่างที่
+   * ตรวจซ้ำกับตอนเขียน ซึ่งชั้น TypeScript จับไม่ได้โดยธรรมชาติ
+   */
+  if (message.includes('vendors_tax_id_branch_unique'))
+    return 'มีผู้ขายที่ใช้เลขประจำตัวผู้เสียภาษีและสาขานี้อยู่แล้ว';
   if (message.includes('row-level security')) return 'คุณไม่มีสิทธิ์ดำเนินการนี้';
   return null;
 }
@@ -239,7 +251,7 @@ export async function createFundingSource(input: unknown): Promise<ActionResult<
  * การปิดใช้ทำให้เลือกใหม่ไม่ได้ แต่ของเดิมยังแสดงผลได้ถูกต้อง (FR-MST-008)
  */
 async function setActiveFlag(
-  table: 'funding_sources' | 'projects',
+  table: 'funding_sources' | 'projects' | 'vendors',
   entityType: string,
   path: string,
   id: unknown,
@@ -354,4 +366,186 @@ export async function setProjectActive(
   isActive: unknown,
 ): Promise<ActionResult<void>> {
   return setActiveFlag('projects', 'project', '/admin/master-data/projects', id, isActive);
+}
+
+// -----------------------------------------------------------------------------
+// ผู้ขาย (FR-MST-005, FR-MST-009)
+// -----------------------------------------------------------------------------
+
+/** รายการที่ผู้ใช้ยืนยันว่าเป็นคนละราย เก็บลง audit เพื่อให้ตรวจย้อนหลังได้ */
+function acknowledgedDuplicatesForAudit(
+  findings: readonly DuplicateFinding[],
+): { vendorId: string; vendorCode: string; reasonTh: string }[] | undefined {
+  if (findings.length === 0) return undefined;
+
+  return findings.map((finding) => ({
+    vendorId: finding.vendor.id,
+    vendorCode: finding.vendor.vendorCode,
+    reasonTh: finding.reasonTh,
+  }));
+}
+
+/**
+ * ช่องที่บันทึกลง audit เมื่อผู้ขายเปลี่ยน
+ *
+ * **ไม่บันทึกเบอร์โทร ที่อยู่ อีเมล และชื่อผู้ติดต่อ** — เป็นข้อมูลติดต่อของบุคคล
+ * ที่ไม่ได้ใช้ตรวจสอบการจัดซื้อ การคัดลอกไปไว้อีกที่หนึ่งจึงเพิ่มความเสี่ยง
+ * โดยไม่ได้เพิ่มความสามารถในการตรวจสอบ (แผนข้อ 11.2 เก็บเท่าที่จำเป็น)
+ *
+ * **บันทึกเลขประจำตัวผู้เสียภาษี** เพราะเป็นตัวระบุผู้รับเงิน การเปลี่ยนเลขนี้
+ * คือสิ่งที่ผู้ตรวจสอบต้องเห็น ถ้าตัดออก audit trail จะตอบไม่ได้ว่าเงินเปลี่ยน
+ * ไปเข้าใครระหว่างทาง และค่านี้ผู้ใช้ที่ล็อกอินอยู่อ่านจากตาราง vendors ได้อยู่แล้ว
+ */
+function vendorAuditFields(vendor: {
+  vendorCode: string;
+  name: string;
+  taxId?: string | null;
+  branchNo?: string | null;
+  isActive?: boolean;
+}) {
+  return {
+    vendorCode: vendor.vendorCode,
+    name: vendor.name,
+    taxId: vendor.taxId ?? null,
+    branchNo: vendor.branchNo ?? null,
+    ...(vendor.isActive === undefined ? {} : { isActive: vendor.isActive }),
+  };
+}
+
+export async function createVendor(input: unknown): Promise<ActionResult<{ id: string }>> {
+  try {
+    const user = await requirePermission('masters.manage');
+
+    const parsed = vendorCreateSchema.safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, error: INVALID_INPUT_MESSAGE, fieldErrors: toFieldErrors(parsed.error) };
+    }
+
+    const { acknowledgedDuplicate, ...vendor } = parsed.data;
+
+    /*
+     * ตรวจซ้ำที่ server ด้วยข้อมูลที่เพิ่งอ่านมา ไม่ใช่เชื่อผลจากเบราว์เซอร์
+     *
+     * รายการในเบราว์เซอร์อาจเก่าไปแล้ว และผู้ที่เรียก API ตรงต้องถูกปฏิเสธ
+     * เหมือนกดผ่านหน้าจอ (ข้อ 4.2) กติกาว่าข้อไหนยกเว้นได้อยู่ที่ชั้นโดเมน
+     */
+    const { rejection, findings } = checkVendorDuplicateRule(
+      vendor,
+      await listVendors(),
+      acknowledgedDuplicate,
+    );
+    if (rejection) return { ok: false, error: rejection };
+
+    const supabase = await createSupabaseServerClient();
+    const { data, error } = await supabase
+      .from('vendors')
+      .insert({
+        vendor_code: vendor.vendorCode,
+        name: vendor.name,
+        tax_id: vendor.taxId ?? null,
+        branch_no: vendor.branchNo ?? null,
+        address: vendorLineToAddress(vendor.address),
+        contact_name: vendor.contactName ?? null,
+        phone: vendor.phone ?? null,
+        email: vendor.email ?? null,
+        note: vendor.note ?? null,
+        is_active: vendor.isActive,
+        created_by: user.id,
+      })
+      .select('id')
+      .single<{ id: string }>();
+
+    if (error || !data) throw new Error(error?.message ?? 'ไม่ได้รับข้อมูลกลับจากฐานข้อมูล');
+
+    await recordAuditEvent({
+      action: 'entity.create',
+      entityType: 'vendor',
+      entityId: data.id,
+      actorId: user.id,
+      after: vendorAuditFields(vendor),
+      metadata: { acknowledgedDuplicates: acknowledgedDuplicatesForAudit(findings) },
+    });
+
+    revalidatePath('/admin/master-data/vendors');
+    return { ok: true, data };
+  } catch (error) {
+    return toActionError(error, 'สร้างผู้ขาย');
+  }
+}
+
+/**
+ * แก้ไขผู้ขาย
+ *
+ * จำเป็นต้องมี ต่างจากแหล่งเงินและโครงการที่มีแค่เพิ่มกับปิดใช้ — เลขประจำตัว
+ * ผู้เสียภาษีที่พิมพ์ผิดจะแก้ไม่ได้เลยถ้าไม่มีหน้านี้ และการ "เพิ่มรายใหม่แทน"
+ * จะทำให้เอกสารเดิมชี้ไปที่ผู้ขายที่มีเลขผิดค้างอยู่ตลอดไป
+ */
+export async function updateVendor(input: unknown): Promise<ActionResult<void>> {
+  try {
+    const user = await requirePermission('masters.manage');
+
+    const parsed = vendorUpdateSchema.safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, error: INVALID_INPUT_MESSAGE, fieldErrors: toFieldErrors(parsed.error) };
+    }
+
+    const { acknowledgedDuplicate, vendorId, ...vendor } = parsed.data;
+
+    const existing = await listVendors();
+    const current = existing.find((row) => row.id === vendorId);
+    if (!current) return { ok: false, error: 'ไม่พบผู้ขายรายนี้ หรือคุณไม่มีสิทธิ์แก้ไข' };
+
+    /*
+     * ตัดตัวเองออกก่อนตรวจซ้ำ มิฉะนั้นการกดบันทึกโดยไม่แก้อะไรจะถูกปฏิเสธว่า
+     * ซ้ำกับตัวเอง ซึ่งผู้ใช้แก้ตามไม่ได้
+     */
+    const { rejection, findings } = checkVendorDuplicateRule(
+      vendor,
+      existing.filter((row) => row.id !== vendorId),
+      acknowledgedDuplicate,
+    );
+    if (rejection) return { ok: false, error: rejection };
+
+    const supabase = await createSupabaseServerClient();
+    const { data, error } = await supabase
+      .from('vendors')
+      .update({
+        vendor_code: vendor.vendorCode,
+        name: vendor.name,
+        tax_id: vendor.taxId ?? null,
+        branch_no: vendor.branchNo ?? null,
+        address: vendorLineToAddress(vendor.address),
+        contact_name: vendor.contactName ?? null,
+        phone: vendor.phone ?? null,
+        email: vendor.email ?? null,
+        note: vendor.note ?? null,
+        is_active: vendor.isActive,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', vendorId)
+      .select('id')
+      .maybeSingle<{ id: string }>();
+
+    if (error) throw new Error(error.message);
+    if (!data) return { ok: false, error: 'ไม่พบผู้ขายรายนี้ หรือคุณไม่มีสิทธิ์แก้ไข' };
+
+    await recordAuditEvent({
+      action: 'entity.update',
+      entityType: 'vendor',
+      entityId: vendorId,
+      actorId: user.id,
+      before: vendorAuditFields(current),
+      after: vendorAuditFields(vendor),
+      metadata: { acknowledgedDuplicates: acknowledgedDuplicatesForAudit(findings) },
+    });
+
+    revalidatePath('/admin/master-data/vendors');
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return toActionError(error, 'แก้ไขผู้ขาย');
+  }
+}
+
+export async function setVendorActive(id: unknown, isActive: unknown): Promise<ActionResult<void>> {
+  return setActiveFlag('vendors', 'vendor', '/admin/master-data/vendors', id, isActive);
 }

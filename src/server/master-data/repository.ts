@@ -1,6 +1,8 @@
 import 'server-only';
 import { createSupabaseServerClient } from '@/server/supabase/server-client';
 import type { FiscalYear } from '@/domain/master-data/fiscal-year';
+import { vendorAddressToLine } from '@/domain/master-data/vendor';
+import type { VendorSummary } from '@/domain/master-data/vendor';
 
 /**
  * การอ่านข้อมูลพื้นฐาน
@@ -182,4 +184,77 @@ export async function loadMasterDataOptions(): Promise<MasterDataOptions> {
     })),
     departments: (departments.data ?? []).map((row) => ({ id: row.id, label: row.name_th })),
   };
+}
+
+// -----------------------------------------------------------------------------
+// ผู้ขาย (FR-MST-005)
+// -----------------------------------------------------------------------------
+
+/**
+ * รายละเอียดผู้ขายที่หน้าจอผู้ดูแลต้องใช้
+ *
+ * ขยายจาก `VendorSummary` ของชั้นโดเมน ซึ่งมีเฉพาะช่องที่ใช้ตรวจซ้ำ —
+ * ชั้นโดเมนไม่ควรรู้จักเบอร์โทรหรือที่อยู่ เพราะไม่ได้ใช้ตัดสินอะไรเลย
+ */
+export interface VendorDetail extends VendorSummary {
+  address: string | null;
+  contactName: string | null;
+  phone: string | null;
+  email: string | null;
+  note: string | null;
+}
+
+interface VendorRow {
+  id: string;
+  vendor_code: string;
+  name: string;
+  tax_id: string | null;
+  branch_no: string | null;
+  address: unknown;
+  contact_name: string | null;
+  phone: string | null;
+  email: string | null;
+  note: string | null;
+  is_active: boolean;
+}
+
+const VENDOR_COLUMNS =
+  'id, vendor_code, name, tax_id, branch_no, address, contact_name, phone, email, note, is_active';
+
+function toVendorDetail(row: VendorRow): VendorDetail {
+  return {
+    id: row.id,
+    vendorCode: row.vendor_code,
+    name: row.name,
+    taxId: row.tax_id,
+    branchNo: row.branch_no,
+    address: vendorAddressToLine(row.address),
+    contactName: row.contact_name,
+    phone: row.phone,
+    email: row.email,
+    note: row.note,
+    isActive: row.is_active,
+  };
+}
+
+/**
+ * ผู้ขายทั้งหมดที่ยังไม่ถูกลบ
+ *
+ * รวมผู้ขายที่ปิดใช้แล้วด้วย เพราะการตรวจซ้ำต้องเทียบกับผู้ขายที่ปิดใช้ด้วย —
+ * ถ้าไม่เทียบ ผู้ใช้จะบันทึกผู้ขายรายเดิมซ้ำได้เพียงเพราะรายเดิมถูกปิดใช้ไว้
+ * ซึ่งจะได้ข้อมูลซ้ำที่ชนกับ unique index ของเลขผู้เสียภาษีอยู่ดี
+ */
+export async function listVendors(): Promise<VendorDetail[]> {
+  const supabase = await createSupabaseServerClient();
+
+  const { data, error } = await supabase
+    .from('vendors')
+    .select(VENDOR_COLUMNS)
+    .is('deleted_at', null)
+    .order('vendor_code')
+    .returns<VendorRow[]>();
+
+  if (error) throw new Error(error.message);
+
+  return (data ?? []).map(toVendorDetail);
 }
