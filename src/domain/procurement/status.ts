@@ -213,3 +213,51 @@ export function assertTransitionAllowed(request: TransitionRequest): Procurement
 
   return rule.to;
 }
+
+/**
+ * การกระทำที่เจ้าของรายการทำกับรายการของตัวเองไม่ได้ (separation of duties)
+ *
+ * บังคับเสมอ ไม่ใช่ค่าตั้งที่ปิดได้ — ดู assumptions ข้อ 2.9
+ *
+ * `cancel` ไม่อยู่ในรายการ เพราะการยกเลิกคำขอของตัวเองไม่ใช่การอนุมัติให้ตัวเอง
+ * และไม่ทำให้เงินเคลื่อน การห้ามจะทำให้ผู้ขอที่รู้ตัวว่าขอผิดต้องรบกวนคนอื่นมายกเลิกให้
+ *
+ * `issue` และการรับของไม่อยู่ในรายการเช่นกัน — เป็นหน้าที่คนละสายกับการอนุมัติ
+ * และผูกกับสิทธิ์ของตนเองอยู่แล้ว
+ */
+export const SELF_ACTION_FORBIDDEN: readonly ProcurementAction[] = [
+  'review_pass',
+  'review_return',
+  'approve',
+  'approve_return',
+  'reject',
+];
+
+export function isSelfActionForbidden(action: ProcurementAction): boolean {
+  return SELF_ACTION_FORBIDDEN.includes(action);
+}
+
+/**
+ * การกระทำที่ผู้ใช้คนนี้กดได้จริงกับรายการนี้
+ *
+ * ใช้ตัดสินว่าจะแสดงปุ่มใดบ้าง — **เป็นเรื่อง UX เท่านั้น**
+ * server ตรวจซ้ำทุกครั้งด้วยกติกาชุดเดียวกัน และเป็นผู้ตัดสิน (ข้อ 4.2)
+ * การซ่อนปุ่มไม่ใช่การควบคุมสิทธิ์
+ */
+export function availableActions(input: {
+  status: ProcurementStatus;
+  permissions: readonly PermissionCode[];
+  isOwner: boolean;
+}): ProcurementAction[] {
+  return PROCUREMENT_ACTIONS.filter((action) => {
+    // การส่งอนุมัติมีเส้นทางของตัวเองที่ตรวจกฎครบชุดก่อน จึงไม่อยู่ในชุดปุ่มนี้
+    if (action === 'submit') return false;
+
+    const rule = findTransition(input.status, action);
+    if (!rule) return false;
+    if (!input.permissions.includes(rule.permission)) return false;
+    if (input.isOwner && isSelfActionForbidden(action)) return false;
+
+    return true;
+  });
+}

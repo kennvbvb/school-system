@@ -2,10 +2,17 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireAnyPermissionForPage } from '@/server/auth/guard';
-import { checkProcurementRules, getProcurement } from '@/server/procurement/repository';
-import { submitProcurement } from '@/server/procurement/actions';
+import {
+  checkProcurementRules,
+  getProcurement,
+  listApprovalHistory,
+} from '@/server/procurement/repository';
+import { submitProcurement, transitionProcurement } from '@/server/procurement/actions';
 import { ValidationSummary } from '@/features/procurements/validation-summary';
 import { ProcurementSubmitButton } from '@/features/procurements/submit-button';
+import { TransitionButtons } from '@/features/procurements/transition-buttons';
+import { ApprovalHistory } from '@/features/procurements/approval-history';
+import { availableActions } from '@/domain/procurement/status';
 import { isEditable } from '@/domain/procurement/draft';
 import { isOverridableRule, isRuleCode } from '@/domain/validation/rules';
 import { TAX_MODE_LABELS_TH } from '@/domain/procurement/schemas';
@@ -35,6 +42,18 @@ export default async function ProcurementDetailPage({
    * ถ้าตอบต่างกัน ผู้ที่ไม่มีสิทธิ์จะใช้หน้านี้สำรวจได้ว่ารายการใดมีอยู่จริง
    */
   if (!procurement) notFound();
+
+  const approvalHistory = await listApprovalHistory(id);
+
+  /*
+   * ปุ่มที่แสดงมาจากกติกาชุดเดียวกับที่ฐานข้อมูลใช้บังคับ รวมกฎ separation of duties
+   * — ถ้าแสดงปุ่มให้เจ้าของรายการ ผู้ใช้จะกดแล้วโดนปฏิเสธทุกครั้งโดยไม่มีทางแก้
+   */
+  const actions = availableActions({
+    status: procurement.status,
+    permissions: viewer.permissions.toArray(),
+    isOwner: procurement.createdBy === viewer.id,
+  });
 
   const canEdit =
     isEditable(procurement.status) &&
@@ -124,6 +143,33 @@ export default async function ProcurementDetailPage({
           />
         </section>
       ) : null}
+
+      {actions.length > 0 ? (
+        <section
+          aria-labelledby="actions-heading"
+          className="rounded-lg border border-slate-200 bg-white p-5"
+        >
+          <h2 id="actions-heading" className="mb-3 text-lg font-semibold">
+            ดำเนินการ
+          </h2>
+          <TransitionButtons
+            status={procurement.status}
+            actions={actions}
+            expectedVersion={procurement.version}
+            onAct={async (input) => {
+              'use server';
+              return transitionProcurement({ ...input, id: procurement.id });
+            }}
+          />
+        </section>
+      ) : null}
+
+      <section aria-labelledby="history-heading" className="space-y-3">
+        <h2 id="history-heading" className="text-lg font-semibold">
+          ประวัติการดำเนินการ
+        </h2>
+        <ApprovalHistory steps={approvalHistory} />
+      </section>
 
       {procurement.exceptionReason ? (
         <section

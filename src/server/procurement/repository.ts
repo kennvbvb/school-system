@@ -1,6 +1,7 @@
 import 'server-only';
 import { createSupabaseServerClient } from '@/server/supabase/server-client';
-import type { ProcurementStatus } from '@/domain/procurement/status';
+import type { ProcurementAction, ProcurementStatus } from '@/domain/procurement/status';
+import type { PermissionSet } from '@/domain/auth/permissions';
 import type {
   ProcurementClassification,
   ProcurementMethodCode,
@@ -98,6 +99,20 @@ export async function listProcurements(limit = 50): Promise<ProcurementSummary[]
 
   const rows = data ?? [];
   if (rows.length === 0) return [];
+
+  return withTotals(rows);
+}
+
+/**
+ * เติมยอดเงินให้แถวที่อ่านมาแล้ว
+ *
+ * แยกออกมาเพราะทั้งหน้ารายการและกล่องงานต้องการยอดชุดเดียวกัน
+ * ถ้าเขียนสองที่ ยอดในสองหน้าจะเลื่อนออกจากกันได้เมื่อสูตรเปลี่ยน
+ */
+async function withTotals(rows: readonly ListRow[]): Promise<ProcurementSummary[]> {
+  if (rows.length === 0) return [];
+
+  const supabase = await createSupabaseServerClient();
 
   const { data: totalsData } = await supabase
     .from('procurement_totals')
@@ -349,4 +364,103 @@ export async function checkProcurementRules(id: string): Promise<ValidationRow[]
     field: row.field,
     overridden: false,
   }));
+}
+
+// -----------------------------------------------------------------------------
+// สายอนุมัติ (PR-04a)
+// -----------------------------------------------------------------------------
+
+export interface ApprovalStep {
+  stepNo: number;
+  action: ProcurementAction;
+  fromStatus: ProcurementStatus;
+  toStatus: ProcurementStatus;
+  actorNameTh: string;
+  actorRoleCode: string;
+  actorPositionTh: string | null;
+  reason: string | null;
+  actedAt: string;
+}
+
+/**
+ * ประวัติการดำเนินการของรายการหนึ่ง
+ *
+ * อ่านชื่อ บทบาท และตำแหน่งจากตารางนี้ตรง ๆ **ไม่ join กลับไปที่ `profiles`**
+ * ค่าเหล่านี้เป็นสำเนา ณ เวลาที่กด ถ้า join ประวัติเมื่อปีที่แล้วจะเปลี่ยนไปตาม
+ * ตำแหน่งปัจจุบันของคนคนนั้น ซึ่งทำให้เอกสารย้อนหลังผิด (ดู migration 0012)
+ */
+export async function listApprovalHistory(procurementId: string): Promise<ApprovalStep[]> {
+  const supabase = await createSupabaseServerClient();
+
+  const { data, error } = await supabase
+    .from('procurement_approvals')
+    .select(
+      'step_no, action, from_status, to_status, actor_name_th, actor_role_code, ' +
+        'actor_position_th, reason, acted_at',
+    )
+    .eq('procurement_id', procurementId)
+    .order('step_no')
+    .returns<
+      {
+        step_no: number;
+        action: string;
+        from_status: ProcurementStatus;
+        to_status: ProcurementStatus;
+        actor_name_th: string;
+        actor_role_code: string;
+        actor_position_th: string | null;
+        reason: string | null;
+        acted_at: string;
+      }[]
+    >();
+
+  if (error) throw new Error(error.message);
+
+  return (data ?? []).map((row) => ({
+    stepNo: row.step_no,
+    action: row.action as ProcurementAction,
+    fromStatus: row.from_status,
+    toStatus: row.to_status,
+    actorNameTh: row.actor_name_th,
+    actorRoleCode: row.actor_role_code,
+    actorPositionTh: row.actor_position_th,
+    reason: row.reason,
+    actedAt: row.acted_at,
+  }));
+}
+
+/**
+ * รายการที่รอผู้ใช้คนนี้ดำเนินการ
+ *
+ * กรองด้วยสถานะที่สิทธิ์ของผู้ใช้ทำอะไรได้ แล้วตัดรายการของตัวเองออกตามกฎ
+ * separation of duties — ถ้าไม่ตัด กล่องงานจะแสดงรายการที่กดแล้วโดนปฏิเสธทุกครั้ง
+ *
+ * RLS ยังเป็นตัวกรองสุดท้ายว่าเห็นรายการใดได้ ที่นี่กรองเพิ่มเพื่อ "ความเกี่ยวข้อง"
+ * ไม่ใช่เพื่อความปลอดภัย
+ */
+export async function listApprovalInbox(input: {
+  viewerId: string;
+  permissions: PermissionSet;
+}): Promise<ProcurementSummary[]> {
+  const statuses: ProcurementStatus[] = [];
+  if (input.permissions.has('procurement.review')) statuses.push('PENDING_REVIEW');
+  if (input.permissions.has('procurement.approve')) statuses.push('PENDING_APPROVAL');
+
+  if (statuses.length === 0) return [];
+
+  const supabase = await createSupabaseServerClient();
+
+  const { data, error } = await supabase
+    .from('procurements')
+    .select('id, reference, subject, status, request_date, version, created_by, vendors(name)')
+    .in('status', statuses)
+    .neq('created_by', input.viewerId)
+    .is('deleted_at', null)
+    // เรียงจากเก่าไปใหม่ — งานที่รอนานที่สุดควรอยู่บนสุด ไม่ใช่งานที่เพิ่งเข้ามา
+    .order('request_date', { ascending: true })
+    .returns<ListRow[]>();
+
+  if (error) throw new Error(`อ่านกล่องงานไม่สำเร็จ: ${error.message}`);
+
+  return withTotals(data ?? []);
 }

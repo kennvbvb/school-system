@@ -105,6 +105,11 @@ jobs:
         # ตรงโดยไม่ผ่านหน้าจอก็ถูกปฏิเสธเหมือนกัน
         run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/procurement_submit_test.sql
 
+      - name: ทดสอบสายอนุมัติบนฐานข้อมูลจริง
+        # separation of duties, ประวัติที่แช่แข็งไว้ และการที่สถานะกับประวัติ
+        # เปลี่ยนพร้อมกันหรือไม่เปลี่ยนเลย พิสูจน์ด้วย unit test ไม่ได้
+        run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/procurement_transition_test.sql
+
       - name: ทดสอบทะเบียนผู้ขายบนฐานข้อมูลจริง
         # กฎ BLOCK ของผู้ขายซ้ำถูกบังคับด้วย unique index ไม่ใช่ด้วย TypeScript
         # และ "ไม่ระบุสาขา" ต้องแปลว่าสาขา 00000 เหมือนที่ชั้นโดเมนแปลง

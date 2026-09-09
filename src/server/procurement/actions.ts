@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { requirePermission } from '@/server/auth/guard';
+import { requireAnyPermission, requirePermission } from '@/server/auth/guard';
 import { createSupabaseServerClient } from '@/server/supabase/server-client';
 import { recordAuditEvent } from '@/server/audit/audit-log';
 import type { ActionResult } from '@/server/action-result';
@@ -10,6 +10,7 @@ import { REQUEST_ID_HEADER, generateRequestId, sanitizeRequestId } from '@/lib/r
 import {
   procurementDraftSchema,
   procurementSubmitSchema,
+  procurementTransitionSchema,
   procurementUpdateSchema,
 } from '@/domain/procurement/schemas';
 import {
@@ -334,6 +335,60 @@ export async function submitProcurement(input: unknown): Promise<ActionResult<vo
     });
 
     revalidatePath('/procurements');
+    revalidatePath(`/procurements/${parsed.data.id}`);
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+/**
+ * ดำเนินการตามสายอนุมัติ (PR-04a)
+ *
+ * ตรวจสิทธิ์ที่นี่ไม่ได้ด้วย `requirePermission` ตัวเดียว เพราะสิทธิ์ที่ต้องใช้
+ * ขึ้นกับ action และสถานะปัจจุบัน — `procurement_transition()` จึงเป็นผู้ตรวจ
+ * โดยดูจากตารางกติกาชุดเดียวกับที่หน้าจอใช้ตัดสินว่าจะแสดงปุ่มใด
+ *
+ * **ไม่เขียน audit ซ้ำจากฝั่งแอป** — RPC เขียนไว้แล้วในทรานแซกชันเดียวกับการ
+ * เปลี่ยนสถานะ ซึ่งเป็นหลักประกันที่แข็งแรงกว่า การเขียนอีกครั้งที่นี่จะทำให้
+ * ผู้ตรวจสอบที่นับจำนวนการเปลี่ยนสถานะได้ตัวเลขเป็นสองเท่า
+ */
+export async function transitionProcurement(input: unknown): Promise<ActionResult<void>> {
+  try {
+    /*
+     * ต้องอ่านรายการได้เป็นอย่างน้อยจึงจะเรียกได้ ส่วนสิทธิ์ของ action นั้น ๆ
+     * ตรวจที่ RPC — ถ้าตรวจซ้ำที่นี่ด้วยจะกลายเป็นกติกาสองที่ที่เลื่อนออกจากกันได้
+     */
+    await requireAnyPermission('procurement.read.own', 'procurement.read.all');
+
+    const parsed = procurementTransitionSchema.safeParse(input);
+    if (!parsed.success) {
+      const first = parsed.error.issues[0]?.message;
+      return { ok: false, error: first ?? 'ข้อมูลที่ส่งมาไม่ถูกต้อง' };
+    }
+
+    const supabase = await createSupabaseServerClient();
+    const headerList = await headers();
+    const requestId = sanitizeRequestId(headerList.get(REQUEST_ID_HEADER)) ?? generateRequestId();
+
+    const { error } = await supabase.rpc('procurement_transition', {
+      p_procurement_id: parsed.data.id,
+      p_action: parsed.data.action,
+      p_expected_version: parsed.data.expectedVersion,
+      p_reason: parsed.data.reason ?? null,
+      p_request_id: requestId,
+    });
+
+    if (error) {
+      // เหตุผลเดียวกับ submitProcurement — ส่งต่อเฉพาะข้อความภาษาไทยที่ตั้งใจให้ผู้ใช้เห็น
+      if (/^[฀-๿]/.test(error.message)) {
+        return { ok: false, error: error.message };
+      }
+      throw new Error(error.message);
+    }
+
+    revalidatePath('/procurements');
+    revalidatePath('/approvals/inbox');
     revalidatePath(`/procurements/${parsed.data.id}`);
     return { ok: true, data: undefined };
   } catch (error) {
