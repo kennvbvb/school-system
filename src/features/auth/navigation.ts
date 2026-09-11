@@ -43,7 +43,6 @@ export const NAV_SECTIONS: readonly NavSection[] = [
         href: '/approvals/inbox',
         labelTh: 'รอตรวจ / รออนุมัติ',
         anyOf: ['procurement.review', 'procurement.approve'],
-        comingSoon: true,
       },
     ],
   },

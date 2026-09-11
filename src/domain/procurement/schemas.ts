@@ -12,6 +12,7 @@
  */
 import { z } from 'zod';
 import { businessDateSchema } from '@/domain/master-data/schemas';
+import { PROCUREMENT_ACTIONS } from './status';
 
 const requiredText = (label: string, max = 255) =>
   z
@@ -220,3 +221,26 @@ export const procurementSubmitSchema = z.object({
 });
 
 export type ProcurementSubmitInput = z.infer<typeof procurementSubmitSchema>;
+
+/**
+ * การดำเนินการตามสายอนุมัติ (PR-04a)
+ *
+ * `action` ตรวจกับรายการที่โดเมนรู้จัก ไม่ใช่ปล่อยเป็น string อิสระ — ค่าที่ไม่รู้จัก
+ * ต้องถูกปฏิเสธที่ขอบเขตนี้ ไม่ใช่ตกไปให้ฐานข้อมูลตอบว่า "ไม่พบกติกา"
+ * ซึ่งเป็นข้อความที่ผู้ใช้แก้ตามไม่ได้
+ *
+ * **ไม่รับ `submit`** เพราะการส่งอนุมัติต้องผ่าน `submitProcurement` ที่ตรวจกฎครบชุด
+ * — ฐานข้อมูลปฏิเสธอยู่แล้ว แต่การกันตั้งแต่ที่นี่ทำให้เจตนาชัดในโค้ดฝั่งแอปด้วย
+ */
+export const procurementTransitionSchema = z.object({
+  id: z.uuid(),
+  expectedVersion: z.number().int().min(1, { message: 'ไม่พบเวอร์ชันของรายการนี้' }),
+  action: z
+    .enum(PROCUREMENT_ACTIONS, { message: 'ไม่รู้จักการดำเนินการนี้' })
+    .refine((value) => value !== 'submit', {
+      message: 'การส่งอนุมัติต้องใช้ปุ่มส่งอนุมัติ ซึ่งตรวจกฎครบชุดก่อน',
+    }),
+  reason: optionalText(1000),
+});
+
+export type ProcurementTransitionInput = z.infer<typeof procurementTransitionSchema>;

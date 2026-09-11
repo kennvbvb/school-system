@@ -1,6 +1,6 @@
 import { formatSatang } from '@/domain/money/money';
 import { decimalStringToSatang } from '@/domain/money/money';
-import type { ProcurementStatus } from '@/domain/procurement/status';
+import type { ProcurementAction, ProcurementStatus } from '@/domain/procurement/status';
 
 /** ป้ายสถานะภาษาไทย — ใช้ร่วมกันทุกหน้าเพื่อไม่ให้คำเรียกต่างกันในแต่ละหน้า */
 export const STATUS_LABELS_TH: Readonly<Record<ProcurementStatus, string>> = {
@@ -14,6 +14,25 @@ export const STATUS_LABELS_TH: Readonly<Record<ProcurementStatus, string>> = {
   PARTIALLY_RECEIVED: 'รับบางส่วน',
   RECEIVED: 'รับครบแล้ว',
   CANCELLED: 'ยกเลิก',
+};
+
+/**
+ * ป้ายของแต่ละการกระทำ — อยู่ที่เดียวกับป้ายสถานะด้วยเหตุผลเดียวกัน
+ *
+ * `review_return` กับ `approve_return` ใช้คำเดียวกันโดยเจตนา — ผู้ใช้เห็นว่า
+ * "ส่งกลับแก้ไข" เหมือนกัน ต่างกันแค่ใครเป็นคนส่งกลับ ซึ่งประวัติบอกอยู่แล้ว
+ */
+export const ACTION_LABELS_TH: Readonly<Record<ProcurementAction, string>> = {
+  submit: 'ส่งอนุมัติ',
+  review_pass: 'ผ่านการตรวจสอบ',
+  review_return: 'ส่งกลับแก้ไข',
+  approve: 'อนุมัติ',
+  approve_return: 'ส่งกลับแก้ไข',
+  reject: 'ไม่อนุมัติ',
+  issue: 'ออกเอกสาร',
+  receive_partial: 'รับของบางส่วน',
+  receive_all: 'รับของครบ',
+  cancel: 'ยกเลิก',
 };
 
 /**
