@@ -39,6 +39,7 @@
 | `procurement.approve`             |   ●   |      |     |     |  ●   |     |     |     |
 | `procurement.cancel`              |   ●   |  ●   |     |     |      |     |     |     |
 | `procurement.override_validation` |   ●   |      |     |     |  ●   |     |     |     |
+| `procurement.disburse`            |   ●   |      |     |     |      |  ●  |     |     |
 | `budget.read`                     |   ●   |  ●   |     |  ●  |  ●   |  ●  |     |  ●  |
 | `budget.manage`                   |   ●   |      |     |     |      |  ●  |     |     |
 | `budget.override`                 |   ●   |      |     |     |      |     |     |     |

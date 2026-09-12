@@ -20,6 +20,7 @@ export const PERMISSIONS = [
   'procurement.approve',
   'procurement.cancel',
   'procurement.override_validation',
+  'procurement.disburse',
   'budget.read',
   'budget.manage',
   'budget.override',
@@ -109,6 +110,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Readonly<Record<RoleCode, readonly Permis
   FINANCE: [
     'masters.read',
     'procurement.read.all',
+    'procurement.disburse',
     'budget.read',
     'budget.manage',
     'reports.export',

@@ -130,6 +130,11 @@ jobs:
         # จะไม่มีใครแก้สิทธิ์ได้อีกเลยนอกจากเข้าฐานข้อมูลตรง ซึ่งโรงเรียนทำเองไม่ได้
         run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/user_administration_test.sql
 
+      - name: ทดสอบการเบิกจ่ายบนฐานข้อมูลจริง
+        # จ่ายแล้วยอดที่ใช้ได้ต้องไม่ขยับ เพราะ RELEASE กับ ACTUAL ลงคู่กัน
+        # และจ่ายจนครบแล้วยอดที่กันไว้ต้องเหลือศูนย์ — ปิดอาการ "กันไว้ตลอดกาล"
+        run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/procurement_disbursement_test.sql
+
   e2e:
     name: End-to-end smoke tests
     runs-on: ubuntu-latest
