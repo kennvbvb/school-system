@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { FormError, SubmitButton, TextAreaField } from '@/features/forms/fields';
 import { useActionForm } from '@/features/forms/use-action-form';
-import { findTransition } from '@/domain/procurement/status';
+import { budgetEffectOf, findTransition } from '@/domain/procurement/status';
 import { ACTION_LABELS_TH } from './format';
 import type { ActionOutcome } from '@/features/forms/use-action-form';
 import type { ProcurementAction, ProcurementStatus } from '@/domain/procurement/status';
@@ -56,6 +56,24 @@ export function TransitionButtons({
 
   const pendingLabel = pending ? ACTION_LABELS_TH[pending] : '';
 
+  /*
+   * บอกล่วงหน้าว่าปุ่มใดแตะเงิน
+   *
+   * การอนุมัติกันยอดงบทันทีในทรานแซกชันเดียวกับการเปลี่ยนสถานะ ถ้างบไม่พอ
+   * ทั้งชุดจะล้ม ผู้ใช้ควรรู้ก่อนกดว่าปุ่มนี้ไม่ได้แค่เปลี่ยนสถานะ
+   *
+   * ใช้ `budgetEffectOf` จากชั้นโดเมน ไม่เขียนรายการสถานะซ้ำที่นี่ — มี parity test
+   * ที่ยืนยันว่ารายการนั้นตรงกับที่ฐานข้อมูลใช้จริง
+   */
+  const budgetEffects = new Set(
+    actions
+      .map((action) => {
+        const rule = findTransition(status, action);
+        return rule ? budgetEffectOf(status, rule.to) : null;
+      })
+      .filter((effect): effect is 'RESERVE' | 'RELEASE' => effect !== null),
+  );
+
   return (
     <div className="space-y-3">
       <FormError message={form.errorMessage} />
@@ -90,7 +108,19 @@ export function TransitionButtons({
             );
           })}
         </div>
-      ) : (
+      ) : null}
+
+      {pending === null && budgetEffects.size > 0 ? (
+        <p className="text-sm text-slate-600">
+          {budgetEffects.has('RESERVE')
+            ? 'การอนุมัติจะกันยอดงบตามแหล่งเงินที่ระบุทันที ถ้ายอดคงเหลือไม่พอ การอนุมัติจะไม่สำเร็จ'
+            : null}
+          {budgetEffects.has('RESERVE') && budgetEffects.has('RELEASE') ? ' · ' : null}
+          {budgetEffects.has('RELEASE') ? 'การยกเลิกจะคืนยอดงบที่กันไว้ให้บัญชีเดิม' : null}
+        </p>
+      ) : null}
+
+      {pending !== null ? (
         <form onSubmit={handleSubmit} className="space-y-3 rounded-md border border-slate-300 p-4">
           <p className="text-sm font-medium">ยืนยันการ{pendingLabel}</p>
           <TextAreaField
@@ -121,7 +151,7 @@ export function TransitionButtons({
             </button>
           </div>
         </form>
-      )}
+      ) : null}
     </div>
   );
 }
