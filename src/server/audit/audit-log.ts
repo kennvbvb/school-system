@@ -28,6 +28,18 @@ export type AuditAction =
   | 'document.issue'
   | 'document.print'
   | 'report.export'
+  /*
+   * การเปลี่ยนสิทธิ์แยกรหัสของตัวเอง ไม่ยุบรวมเป็น entity.update
+   *
+   * ผู้ตรวจสอบต้องกรอง "ใครเปลี่ยนสิทธิ์ใคร" ออกมาได้โดยไม่ต้องไล่อ่านทุกการแก้ไข
+   * โปรไฟล์ — การเปลี่ยนนามสกุลกับการเพิ่มสิทธิ์อนุมัติไม่ใช่เรื่องระดับเดียวกัน
+   *
+   * สองรหัสหลังถูกเขียนโดย `user_set_roles()` / `user_set_active()` ในฐานข้อมูล
+   * ที่นี่ประกาศไว้ให้ฝั่ง TypeScript อ้างถึงรหัสเดียวกันได้
+   */
+  | 'user.invite'
+  | 'user.roles_change'
+  | 'user.active_change'
   | 'admin.action';
 
 export interface AuditEventInput {

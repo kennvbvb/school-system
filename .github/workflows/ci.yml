@@ -125,6 +125,11 @@ jobs:
         # ที่รวมกันเกินงบอนุมัติสำเร็จได้เพียงรายการเดียว ซึ่งเขียนใน .sql ไฟล์เดียวไม่ได้
         run: supabase/tests/run-reservation-tests.sh "$DB_URL"
 
+      - name: ทดสอบการจัดการผู้ใช้และสิทธิ์บนฐานข้อมูลจริง
+        # กฎที่สำคัญที่สุดคือ "ต้องเหลือผู้ดูแลอย่างน้อยหนึ่งคนเสมอ" — ถ้าพลาด
+        # จะไม่มีใครแก้สิทธิ์ได้อีกเลยนอกจากเข้าฐานข้อมูลตรง ซึ่งโรงเรียนทำเองไม่ได้
+        run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/user_administration_test.sql
+
   e2e:
     name: End-to-end smoke tests
     runs-on: ubuntu-latest
