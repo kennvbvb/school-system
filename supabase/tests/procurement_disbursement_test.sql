@@ -96,29 +96,69 @@ insert into public.role_permissions (role_code, permission_code) values
   ('APPROVER', 'procurement.cancel')
 on conflict do nothing;
 
-insert into public.fiscal_years (id, code, year_be, start_date, end_date) values
-  ('d0000000-0000-4000-8000-000000000001', 'FYDB', 2569, '2025-10-01', '2026-09-30');
+/*
+ * ใช้ปีงบที่ครอบวันนี้ ถ้ายังไม่มีจึงสร้าง — แบบเดียวกับ run-reservation-tests.sh
+ *
+ * สองข้อบังคับที่ทำให้เขียนเลขตายไว้ไม่ได้
+ *   1. `run-reservation-tests.sh` **commit** ปีงบทิ้งไว้จริง (ไม่ rollback เพราะ
+ *      สอง session ต้องเห็นข้อมูลชุดเดียวกัน) และใน CI ชุดนั้นรันก่อนไฟล์นี้
+ *      — ชนทั้ง unique ของ year_be และ exclusion constraint fiscal_years_no_overlap
+ *   2. การอนุมัติกันยอดด้วย `current_date` ปีงบจึง **ต้อง** ครอบวันนี้เสมอ
+ *      เลี่ยงการซ้อนช่วงด้วยการเลือกช่วงอื่นจึงทำไม่ได้
+ *
+ * เป็นความล้มที่เครื่องของผู้เขียนไม่เจอ เพราะรันคนละลำดับกับ CI
+ */
+insert into public.fiscal_years (code, year_be, start_date, end_date, status)
+select
+  'FYDB-TEST',
+  (select min(candidate)
+   from generate_series(2560, 2700) as candidate
+   where candidate not in (select year_be from public.fiscal_years)),
+  date_trunc('year', current_date)::date,
+  (date_trunc('year', current_date) + interval '1 year - 1 day')::date,
+  'OPEN'
+where not exists (
+  select 1 from public.fiscal_years where current_date between start_date and end_date
+);
+
+/*
+ * เข้าถึงปีงบและวันฐานผ่านฟังก์ชัน ไม่ใช่ตัวแปรของ psql
+ *
+ * psql ไม่แทนค่าตัวแปรที่อยู่ข้างใน dollar-quoted string ซึ่ง assert_fails()
+ * ใช้ห่อคำสั่งทุกคำสั่ง การใช้ `:'d0'` จึงกลายเป็น syntax error เฉพาะใน
+ * assertion ที่คาดว่าจะล้ม — และ test จะ "ผ่าน" ด้วยเหตุผลที่ผิด
+ * ถ้า assert_fails ไม่ได้ตรวจข้อความของ error
+ */
+create or replace function pg_temp.fy() returns uuid language sql stable as $fn$
+  select id from public.fiscal_years
+  where current_date between start_date and end_date and status = 'OPEN' limit 1;
+$fn$;
+
+create or replace function pg_temp.d0() returns date language sql stable as $fn$
+  select greatest(start_date, current_date - 40) from public.fiscal_years
+  where current_date between start_date and end_date and status = 'OPEN' limit 1;
+$fn$;
 
 /* สองโครงการ เพราะบัญชีงบหนึ่งบัญชีผูกได้หนึ่ง scope (budget_accounts_scope_unique) */
 insert into public.projects (id, code, name_th, fiscal_year_id) values
   ('d0000000-0000-4000-8000-000000000002', 'PRJ-DB-A', 'โครงการทดสอบการเบิกจ่าย ก (ตัวอย่าง)',
-   'd0000000-0000-4000-8000-000000000001'),
+   pg_temp.fy()),
   ('d0000000-0000-4000-8000-000000000005', 'PRJ-DB-B', 'โครงการทดสอบการเบิกจ่าย ข (ตัวอย่าง)',
-   'd0000000-0000-4000-8000-000000000001');
+   pg_temp.fy());
 
 /* สองบัญชีงบ เพื่อพิสูจน์การแบ่งยอดตามสัดส่วน */
 insert into public.budget_accounts (id, code, fiscal_year_id, project_id) values
   ('d0000000-0000-4000-8000-000000000003', 'ACC-DB-A',
-   'd0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000002'),
+   pg_temp.fy(), 'd0000000-0000-4000-8000-000000000002'),
   ('d0000000-0000-4000-8000-000000000004', 'ACC-DB-B',
-   'd0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000005');
+   pg_temp.fy(), 'd0000000-0000-4000-8000-000000000005');
 
 insert into public.procurements (
   id, subject, purpose, fiscal_year_id, request_date, report_date,
   classification, procurement_method, tax_mode, created_by
 ) values
   ('dbaaaaaa-0000-4000-8000-000000000001', 'จัดซื้อทดสอบการเบิกจ่าย (ตัวอย่าง)',
-   'ใช้ทดสอบ (ตัวอย่าง)', 'd0000000-0000-4000-8000-000000000001', '2026-01-05', '2026-01-06',
+   'ใช้ทดสอบ (ตัวอย่าง)', pg_temp.fy(), (pg_temp.d0()), (pg_temp.d0() + 1),
    'GOODS', 'SPECIFIC', 'EXEMPT', 'd1111111-1111-4111-8111-111111111111');
 
 insert into public.procurement_items (procurement_id, line_no, description, quantity, unit_price)
@@ -135,9 +175,9 @@ set local role authenticated;
 
 set local request.jwt.claim.sub = 'd4444444-4444-4444-8444-444444444444';
 select public.budget_post_movement(
-  'd0000000-0000-4000-8000-000000000003', 'ALLOCATION', 5000.00, '2026-01-01', 'ตั้งต้น');
+  'd0000000-0000-4000-8000-000000000003', 'ALLOCATION', 5000.00, (pg_temp.d0()), 'ตั้งต้น');
 select public.budget_post_movement(
-  'd0000000-0000-4000-8000-000000000004', 'ALLOCATION', 5000.00, '2026-01-01', 'ตั้งต้น');
+  'd0000000-0000-4000-8000-000000000004', 'ALLOCATION', 5000.00, (pg_temp.d0()), 'ตั้งต้น');
 
 -- ---------------------------------------------------------------------------
 -- เดินรายการจนถึงสถานะรับของแล้ว
@@ -171,7 +211,7 @@ set local request.jwt.claim.sub = 'd4444444-4444-4444-8444-444444444444';
 
 select pg_temp.assert_fails(
   $$select public.procurement_disburse(
-      'dbaaaaaa-0000-4000-8000-000000000001', 1000.00, '2026-02-01')$$,
+      'dbaaaaaa-0000-4000-8000-000000000001', 1000.00, (pg_temp.d0() + 5))$$,
   'เบิกจ่ายได้เมื่อรับของแล้วเท่านั้น',
   'สถานะ APPROVED เบิกจ่ายไม่ได้');
 
@@ -211,7 +251,7 @@ select pg_temp.assert_eq(
 
 select pg_temp.assert_fails(
   $$select public.procurement_disburse(
-      'dbaaaaaa-0000-4000-8000-000000000001', 1000.00, '2026-02-01')$$,
+      'dbaaaaaa-0000-4000-8000-000000000001', 1000.00, (pg_temp.d0() + 5))$$,
   'คุณไม่มีสิทธิ์บันทึกการเบิกจ่าย',
   'ผู้ไม่มีสิทธิ์เบิกจ่ายถูกปฏิเสธ');
 
@@ -225,7 +265,7 @@ select pg_temp.assert_fails(
 set local request.jwt.claim.sub = 'd4444444-4444-4444-8444-444444444444';
 
 select public.procurement_disburse(
-  'dbaaaaaa-0000-4000-8000-000000000001', 1500.00, '2026-02-01', 'PAY-001', 'ร้านตัวอย่าง');
+  'dbaaaaaa-0000-4000-8000-000000000001', 1500.00, (pg_temp.d0() + 5), 'PAY-001', 'ร้านตัวอย่าง');
 
 select pg_temp.assert_eq(
   pg_temp.available('d0000000-0000-4000-8000-000000000003'), 3000.00::numeric,
@@ -259,7 +299,7 @@ select pg_temp.assert_eq(
 
 select pg_temp.assert_fails(
   $$select public.procurement_disburse(
-      'dbaaaaaa-0000-4000-8000-000000000001', 1500.01, '2026-02-05')$$,
+      'dbaaaaaa-0000-4000-8000-000000000001', 1500.01, (pg_temp.d0() + 6))$$,
   'เบิกจ่ายเกินยอดที่กันไว้ไม่ได้',
   'จ่ายเกินยอดที่กันไว้แม้แค่หนึ่งสตางค์ก็ไม่ได้');
 
@@ -268,7 +308,7 @@ select pg_temp.assert_fails(
 -- ---------------------------------------------------------------------------
 
 select public.procurement_disburse(
-  'dbaaaaaa-0000-4000-8000-000000000001', 1500.00, '2026-02-10', 'PAY-002');
+  'dbaaaaaa-0000-4000-8000-000000000001', 1500.00, (pg_temp.d0() + 10), 'PAY-002');
 
 select pg_temp.assert_eq(
   pg_temp.outstanding('dbaaaaaa-0000-4000-8000-000000000001'), 0.00::numeric,
@@ -286,7 +326,7 @@ select pg_temp.assert_eq(
 
 select pg_temp.assert_fails(
   $$select public.procurement_disburse(
-      'dbaaaaaa-0000-4000-8000-000000000001', 0.01, '2026-02-11')$$,
+      'dbaaaaaa-0000-4000-8000-000000000001', 0.01, (pg_temp.d0() + 11))$$,
   'ไม่มียอดที่กันไว้เหลือ',
   'จ่ายซ้ำหลังจ่ายครบแล้วไม่ได้');
 
@@ -338,13 +378,13 @@ select pg_temp.assert_fails(
 -- ---------------------------------------------------------------------------
 
 select public.procurement_disburse(
-  'dbaaaaaa-0000-4000-8000-000000000001', 0.01, '2026-02-20', 'PAY-003');
+  'dbaaaaaa-0000-4000-8000-000000000001', 0.01, (pg_temp.d0() + 20), 'PAY-003');
 
 select pg_temp.assert_eq(
   (select sum(amount) from public.budget_movements
    where source_id = 'dbaaaaaa-0000-4000-8000-000000000001'
      and movement_type = 'ACTUAL'
-     and effective_date = '2026-02-20'),
+     and effective_date = (pg_temp.d0() + 20)),
   0.01::numeric, 'จ่าย 1 สตางค์แล้วลงจริง 1 สตางค์ ไม่หายและไม่งอก');
 
 -- ---------------------------------------------------------------------------
