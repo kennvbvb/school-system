@@ -82,12 +82,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
   {
     titleTh: 'ผู้ดูแลระบบ',
     items: [
-      {
-        href: '/admin/users',
-        labelTh: 'ผู้ใช้และสิทธิ์',
-        anyOf: ['users.manage'],
-        comingSoon: true,
-      },
+      { href: '/admin/users', labelTh: 'ผู้ใช้และสิทธิ์', anyOf: ['users.manage'] },
       {
         href: '/admin/master-data',
         labelTh: 'ข้อมูลพื้นฐาน',

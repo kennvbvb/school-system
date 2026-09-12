@@ -19,17 +19,17 @@
 
 ดูรายการทั้งหมดใน `.env.example` — ไฟล์นั้นระบุเฉพาะ **ชื่อ** ไม่มีค่าจริง
 
-| ตัวแปร                          | ฝั่ง                | บังคับ                                |
-| ------------------------------- | ------------------- | ------------------------------------- |
-| `NEXT_PUBLIC_APP_URL`           | client + server     | ใช่                                   |
-| `NEXT_PUBLIC_SUPABASE_URL`      | client + server     | ใช่                                   |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | client + server     | ใช่                                   |
-| `SUPABASE_SERVICE_ROLE_KEY`     | **server เท่านั้น** | ไม่ (แต่จำเป็นสำหรับงานผู้ดูแล)       |
-| `SENTRY_DSN`                    | server              | ไม่                                   |
-| `APP_TIMEZONE`                  | server              | ไม่ (ค่าเริ่มต้น `Asia/Bangkok`)      |
-| `DOCUMENT_STORAGE_BUCKET`       | server              | ไม่                                   |
-| `ATTACHMENT_STORAGE_BUCKET`     | server              | ไม่                                   |
-| `APP_COMMIT_SHA`                | server              | ไม่ — ตั้งจาก `VERCEL_GIT_COMMIT_SHA` |
+| ตัวแปร                          | ฝั่ง                | บังคับ                                   |
+| ------------------------------- | ------------------- | ---------------------------------------- |
+| `NEXT_PUBLIC_APP_URL`           | client + server     | ใช่                                      |
+| `NEXT_PUBLIC_SUPABASE_URL`      | client + server     | ใช่                                      |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | client + server     | ใช่                                      |
+| `SUPABASE_SERVICE_ROLE_KEY`     | **server เท่านั้น** | ไม่ — แต่ถ้าไม่ตั้ง เชิญผู้ใช้ใหม่ไม่ได้ |
+| `SENTRY_DSN`                    | server              | ไม่                                      |
+| `APP_TIMEZONE`                  | server              | ไม่ (ค่าเริ่มต้น `Asia/Bangkok`)         |
+| `DOCUMENT_STORAGE_BUCKET`       | server              | ไม่                                      |
+| `ATTACHMENT_STORAGE_BUCKET`     | server              | ไม่                                      |
+| `APP_COMMIT_SHA`                | server              | ไม่ — ตั้งจาก `VERCEL_GIT_COMMIT_SHA`    |
 
 env ถูกตรวจด้วย Zod schema ตอน import ครั้งแรก (`src/lib/env/server.ts`)
 deployment ที่ตั้งค่าไม่ครบจะล้มตั้งแต่ตอน build ไม่ใช่ตอนผู้ใช้กดปุ่ม
