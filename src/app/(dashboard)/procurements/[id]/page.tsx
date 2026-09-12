@@ -8,6 +8,10 @@ import {
   listApprovalHistory,
 } from '@/server/procurement/repository';
 import { submitProcurement, transitionProcurement } from '@/server/procurement/actions';
+import { listDocumentNumbers, listNumbersInScope } from '@/server/documents/repository';
+import { recordDocumentNumber, voidDocumentNumber } from '@/server/documents/actions';
+import { DocumentNumberForm } from '@/features/documents/document-number-form';
+import { DocumentNumberList } from '@/features/documents/document-number-list';
 import { ValidationSummary } from '@/features/procurements/validation-summary';
 import { ProcurementSubmitButton } from '@/features/procurements/submit-button';
 import { TransitionButtons } from '@/features/procurements/transition-buttons';
@@ -44,6 +48,18 @@ export default async function ProcurementDetailPage({
   if (!procurement) notFound();
 
   const approvalHistory = await listApprovalHistory(id);
+
+  /*
+   * ทะเบียนเลขที่เอกสาร (PR-04b)
+   *
+   * `numbersInScope` ดึงเฉพาะเมื่อผู้ใช้ออกเลขได้ เพราะเป็นข้อมูลที่ฟอร์มใช้เตือนซ้ำ
+   * และเสนอเลขถัดไป ผู้ที่ดูอย่างเดียวไม่ต้องรับทะเบียนทั้งปีไปที่ browser
+   */
+  const canIssueDocuments = viewer.permissions.has('documents.issue');
+  const documentNumbers = await listDocumentNumbers(id);
+  const numbersInScope = canIssueDocuments
+    ? await listNumbersInScope(procurement.fiscalYearId)
+    : [];
 
   /*
    * ปุ่มที่แสดงมาจากกติกาชุดเดียวกับที่ฐานข้อมูลใช้บังคับ รวมกฎ separation of duties
@@ -163,6 +179,32 @@ export default async function ProcurementDetailPage({
           />
         </section>
       ) : null}
+
+      <section aria-labelledby="document-numbers-heading" className="space-y-3">
+        <h2 id="document-numbers-heading" className="text-lg font-semibold">
+          เลขที่เอกสาร
+        </h2>
+
+        <DocumentNumberList
+          rows={documentNumbers}
+          canIssue={canIssueDocuments}
+          onVoid={async (input) => {
+            'use server';
+            return voidDocumentNumber(input, procurement.id);
+          }}
+        />
+
+        {canIssueDocuments ? (
+          <DocumentNumberForm
+            procurementId={procurement.id}
+            existing={numbersInScope}
+            onRecord={async (input) => {
+              'use server';
+              return recordDocumentNumber(input);
+            }}
+          />
+        ) : null}
+      </section>
 
       <section aria-labelledby="history-heading" className="space-y-3">
         <h2 id="history-heading" className="text-lg font-semibold">

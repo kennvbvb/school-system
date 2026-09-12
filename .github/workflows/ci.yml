@@ -115,6 +115,11 @@ jobs:
         # และ "ไม่ระบุสาขา" ต้องแปลว่าสาขา 00000 เหมือนที่ชั้นโดเมนแปลง
         run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/vendor_registry_test.sql
 
+      - name: ทดสอบทะเบียนเลขที่เอกสารบนฐานข้อมูลจริง
+        # เลขไทยกับเลขอารบิกที่ค่าเท่ากันต้องถือว่าซ้ำ (F-12) และเลขที่ยกเลิกแล้ว
+        # ต้องนำกลับมาใช้ไม่ได้ — ทั้งสองข้อบังคับด้วย unique index ไม่ใช่ TypeScript
+        run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/document_number_test.sql
+
   e2e:
     name: End-to-end smoke tests
     runs-on: ubuntu-latest
