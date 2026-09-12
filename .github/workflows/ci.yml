@@ -120,6 +120,11 @@ jobs:
         # ต้องนำกลับมาใช้ไม่ได้ — ทั้งสองข้อบังคับด้วย unique index ไม่ใช่ TypeScript
         run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/document_number_test.sql
 
+      - name: ทดสอบการกันยอดงบตอนอนุมัติบนฐานข้อมูลจริง
+        # ชุดที่สองอนุมัติสองรายการพร้อมกันด้วยสอง session — พิสูจน์ว่าสองรายการ
+        # ที่รวมกันเกินงบอนุมัติสำเร็จได้เพียงรายการเดียว ซึ่งเขียนใน .sql ไฟล์เดียวไม่ได้
+        run: supabase/tests/run-reservation-tests.sh "$DB_URL"
+
   e2e:
     name: End-to-end smoke tests
     runs-on: ubuntu-latest

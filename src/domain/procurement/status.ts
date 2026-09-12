@@ -162,6 +162,48 @@ export function isEditableStatus(status: ProcurementStatus): boolean {
   return EDITABLE_STATUSES.includes(status);
 }
 
+/**
+ * สถานะที่ถือยอดงบที่กันไว้ (PR-04c)
+ *
+ * ระบบลงรายการ `RESERVE` ตอน **เข้า** สถานะกลุ่มนี้ และลง `RELEASE` ตอน **ออก**
+ * จากกลุ่มนี้ไปสถานะที่ไม่ถือยอด — ตัดสินจากสถานะก่อนและหลัง ไม่ใช่จากชื่อ action
+ * เพราะเส้นทางใหม่ที่เพิ่มภายหลังจะได้พฤติกรรมที่ถูกต้องโดยอัตโนมัติ
+ *
+ * `RECEIVED` ยังถือยอดไว้ เพราะรับของแล้วแต่ยังไม่ได้เบิกจ่าย เงินยังผูกพันอยู่
+ * **การแปลงยอดที่กันไว้เป็นค่าใช้จ่ายจริงยังไม่มีในรอบนี้** เป็นงานของการเบิกจ่าย
+ *
+ * รายการนี้อยู่สองที่โดยจำเป็น — ที่นี่กับ `status_holds_reservation()` ใน
+ * migration 0017 และมี `tests/unit/reservation-parity.test.ts` อ่าน SQL จริงมาเทียบ
+ */
+export const STATUSES_HOLDING_RESERVATION: readonly ProcurementStatus[] = [
+  'APPROVED',
+  'ISSUED',
+  'PARTIALLY_RECEIVED',
+  'RECEIVED',
+];
+
+export function statusHoldsReservation(status: ProcurementStatus): boolean {
+  return STATUSES_HOLDING_RESERVATION.includes(status);
+}
+
+/**
+ * การเปลี่ยนสถานะนี้ทำให้เกิดการกันยอดหรือคืนยอดหรือไม่
+ *
+ * มีไว้ให้หน้าจอเตือนผู้ใช้ก่อนกด — การอนุมัติที่กันยอดงบไม่ได้จะล้มทั้งชุด
+ * ผู้ใช้ควรรู้ล่วงหน้าว่าปุ่มนี้แตะเงิน ไม่ใช่แค่เปลี่ยนสถานะ
+ */
+export function budgetEffectOf(
+  from: ProcurementStatus,
+  to: ProcurementStatus,
+): 'RESERVE' | 'RELEASE' | null {
+  const before = statusHoldsReservation(from);
+  const after = statusHoldsReservation(to);
+
+  if (after && !before) return 'RESERVE';
+  if (before && !after) return 'RELEASE';
+  return null;
+}
+
 export function findTransition(
   from: ProcurementStatus,
   action: ProcurementAction,
