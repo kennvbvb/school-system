@@ -12,6 +12,11 @@ import { listDocumentNumbers, listNumbersInScope } from '@/server/documents/repo
 import { recordDocumentNumber, voidDocumentNumber } from '@/server/documents/actions';
 import { DocumentNumberForm } from '@/features/documents/document-number-form';
 import { DocumentNumberList } from '@/features/documents/document-number-list';
+import { listDisbursements, outstandingReserveSatang } from '@/server/disbursements/repository';
+import { recordDisbursement, voidDisbursement } from '@/server/disbursements/actions';
+import { DisbursementForm } from '@/features/disbursements/disbursement-form';
+import { DisbursementList } from '@/features/disbursements/disbursement-list';
+import { statusAllowsDisbursement } from '@/domain/procurement/disbursement';
 import { ValidationSummary } from '@/features/procurements/validation-summary';
 import { ProcurementSubmitButton } from '@/features/procurements/submit-button';
 import { TransitionButtons } from '@/features/procurements/transition-buttons';
@@ -57,6 +62,18 @@ export default async function ProcurementDetailPage({
    */
   const canIssueDocuments = viewer.permissions.has('documents.issue');
   const documentNumbers = await listDocumentNumbers(id);
+
+  /*
+   * ข้อมูลการเบิกจ่าย (PR-04d)
+   *
+   * `canDisburse` คุมแค่การแสดงฟอร์ม ส่วนการบังคับจริงอยู่ที่
+   * `procurement_disburse()` ซึ่งตรวจสิทธิ์และสถานะซ้ำที่ฐานข้อมูลเสมอ (ข้อ 4.2)
+   */
+  const canDisburse = viewer.permissions.has('procurement.disburse');
+  const [disbursements, outstandingSatang] = await Promise.all([
+    listDisbursements(id),
+    outstandingReserveSatang(id),
+  ]);
   const numbersInScope = canIssueDocuments
     ? await listNumbersInScope(procurement.fiscalYearId)
     : [];
@@ -203,6 +220,47 @@ export default async function ProcurementDetailPage({
               return recordDocumentNumber(input);
             }}
           />
+        ) : null}
+      </section>
+
+      <section aria-labelledby="disbursements-heading" className="space-y-3">
+        <h2 id="disbursements-heading" className="text-lg font-semibold">
+          การเบิกจ่าย
+        </h2>
+
+        <DisbursementList
+          rows={disbursements}
+          canVoid={canDisburse}
+          onVoid={async (input) => {
+            'use server';
+            return voidDisbursement(input, procurement.id);
+          }}
+        />
+
+        {/*
+          แสดงฟอร์มเฉพาะเมื่อสถานะเบิกจ่ายได้และยังมียอดกันไว้เหลือ
+
+          ฟอร์มที่กรอกแล้วถูกปฏิเสธทุกครั้งแย่กว่าไม่มีฟอร์ม เพราะผู้ใช้ไม่มีทาง
+          แก้ให้ผ่านได้ — บอกเหตุผลเป็นข้อความแทนจะช่วยให้รู้ว่าต้องทำอะไรก่อน
+        */}
+        {canDisburse ? (
+          statusAllowsDisbursement(procurement.status) && outstandingSatang > 0n ? (
+            <DisbursementForm
+              procurementId={procurement.id}
+              status={procurement.status}
+              outstandingSatang={outstandingSatang}
+              onSubmit={async (input) => {
+                'use server';
+                return recordDisbursement(input);
+              }}
+            />
+          ) : (
+            <p className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-slate-700">
+              {statusAllowsDisbursement(procurement.status)
+                ? 'ไม่มียอดที่กันไว้เหลือให้เบิกจ่ายแล้ว'
+                : 'เบิกจ่ายได้เมื่อรับของแล้วเท่านั้น'}
+            </p>
+          )
         ) : null}
       </section>
 

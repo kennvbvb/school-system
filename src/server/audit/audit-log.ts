@@ -40,6 +40,13 @@ export type AuditAction =
   | 'user.invite'
   | 'user.roles_change'
   | 'user.active_change'
+  /*
+   * การเบิกจ่ายแยกรหัสของตัวเองด้วยเหตุผลเดียวกัน — เป็นจุดที่เงินออกจากงบจริง
+   * ทั้งสองรหัสถูกเขียนโดย `procurement_disburse()` /
+   * `procurement_disbursement_void()` ในฐานข้อมูล (migration 0019)
+   */
+  | 'procurement.disburse'
+  | 'procurement.disburse_void'
   | 'admin.action';
 
 export interface AuditEventInput {

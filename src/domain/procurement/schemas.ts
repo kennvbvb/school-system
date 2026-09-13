@@ -12,6 +12,7 @@
  */
 import { z } from 'zod';
 import { businessDateSchema } from '@/domain/master-data/schemas';
+import { positiveAmountSchema } from '@/domain/budget/schemas';
 import { PROCUREMENT_ACTIONS } from './status';
 
 const requiredText = (label: string, max = 255) =>
@@ -244,3 +245,35 @@ export const procurementTransitionSchema = z.object({
 });
 
 export type ProcurementTransitionInput = z.infer<typeof procurementTransitionSchema>;
+
+// -----------------------------------------------------------------------------
+// การเบิกจ่าย
+// -----------------------------------------------------------------------------
+
+/**
+ * บันทึกการเบิกจ่ายหนึ่งครั้ง
+ *
+ * ไม่มีช่อง "บัญชีงบ" โดยเจตนา — ระบบแบ่งยอดตามสัดส่วนของยอดที่ยังกันไว้ให้เอง
+ * (ดู `splitProRata` ใน disbursement.ts) การให้ผู้ใช้กรอกเองเป็นงานคำนวณด้วยมือ
+ * ที่ผิดได้ง่ายและผิดแล้วยอดรวมยังตรง จึงไม่มีอะไรฟ้อง
+ *
+ * เลขที่เอกสารการจ่ายเป็นข้อความอิสระ เพราะโรงเรียนกำหนดรูปแบบเอง (Q3)
+ */
+export const disbursementSchema = z.object({
+  procurementId: z.uuid({ message: 'กรุณาระบุรายการจัดซื้อจัดจ้าง' }),
+  amount: positiveAmountSchema,
+  paidOn: businessDateSchema,
+  documentNo: optionalText(64),
+  payeeName: optionalText(255),
+  note: optionalText(),
+});
+
+export type DisbursementInput = z.infer<typeof disbursementSchema>;
+
+/** การยกเลิกการเบิกจ่ายต้องมีเหตุผลเสมอ เพราะเป็นการกลับรายการที่ลงบัญชีไปแล้ว */
+export const disbursementVoidSchema = z.object({
+  disbursementId: z.uuid({ message: 'กรุณาระบุรายการเบิกจ่าย' }),
+  reason: requiredText('เหตุผลที่ยกเลิก', 500),
+});
+
+export type DisbursementVoidInput = z.infer<typeof disbursementVoidSchema>;
