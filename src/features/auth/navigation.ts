@@ -88,7 +88,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
         labelTh: 'ข้อมูลพื้นฐาน',
         anyOf: ['masters.manage', 'settings.manage', 'budget.manage'],
       },
-      { href: '/admin/audit-log', labelTh: 'Audit log', anyOf: ['audit.read'], comingSoon: true },
+      { href: '/admin/audit-log', labelTh: 'Audit log', anyOf: ['audit.read'] },
       { href: '/admin/system', labelTh: 'ข้อมูลระบบ', anyOf: ['settings.manage'] },
     ],
   },

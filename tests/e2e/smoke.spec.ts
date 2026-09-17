@@ -118,3 +118,12 @@ test('หน้าจัดการผู้ใช้และสิทธิ�
   await page.goto('/admin/users');
   await expect(page).toHaveURL(/\/login\?returnTo=%2Fadmin%2Fusers$/);
 });
+
+test('หน้า audit log ถูกกันไว้และจำปลายทางเดิม', async ({ page }) => {
+  /*
+   * audit log แสดงว่าใครทำอะไรกับข้อมูลอะไรบ้างทั้งระบบ รวมถึงชื่อบุคลากร
+   * เป็นภาพรวมที่ผู้ไม่หวังดีใช้วางแผนได้ดีที่สุด จึงต้องกันไว้ก่อนเข้าสู่ระบบเสมอ
+   */
+  await page.goto('/admin/audit-log');
+  await expect(page).toHaveURL(/\/login\?returnTo=%2Fadmin%2Faudit-log$/);
+});
