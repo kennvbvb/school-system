@@ -71,6 +71,13 @@ export const NAV_SECTIONS: readonly NavSection[] = [
   {
     titleTh: 'รายงาน',
     items: [
+      /* ใช้ budget.read ไม่ใช่ reports.export — หน้านี้เป็นการดูบนจอ ไม่ใช่การนำ
+         ข้อมูลออกนอกระบบ ผู้ที่เห็นยอดรายบัญชีอยู่แล้วจึงเห็นยอดรวมได้ด้วย */
+      {
+        href: '/reports/budget',
+        labelTh: 'รายงานงบประมาณ',
+        anyOf: ['budget.read', 'budget.manage'],
+      },
       {
         href: '/reports/procurements',
         labelTh: 'รายงานจัดซื้อจัดจ้าง',
