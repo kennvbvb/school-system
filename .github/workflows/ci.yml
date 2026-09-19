@@ -140,6 +140,11 @@ jobs:
         # เท่ากันต้องไม่ถูกข้ามตอนแบ่งหน้า — ประวัติที่หายไปเงียบ ๆ ยอมไม่ได้
         run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/audit_read_test.sql
 
+      - name: ทดสอบฟังก์ชันรวมยอดงบสำหรับรายงานบนฐานข้อมูลจริง
+        # ยอดที่รายงานคืนต้องตรงกับ view budget_account_balances ทุกบัญชี
+        # และบัญชีที่ยังไม่มีรายการหรือไม่ได้ผูกโครงการต้องไม่หายไปจากผลลัพธ์
+        run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/budget_report_test.sql
+
   e2e:
     name: End-to-end smoke tests
     runs-on: ubuntu-latest
