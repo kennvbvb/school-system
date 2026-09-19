@@ -141,6 +141,69 @@ describe('การคิดยอด', () => {
     expect(summary.availableSatang).toBe(decimalStringToSatang('5000.00'));
   });
 
+  /*
+   * **ข้อที่ปิดความเงียบอันตรายที่สุดของ PR-04e**
+   *
+   * `RELEASE` ต้องเข้ากลุ่มเดียวกับแถวที่มันคืนยอดให้ ถ้าตรึงให้อยู่กลุ่ม
+   * "ยอดที่กันไว้" เสมอแบบเดิม การคืนยอดผูกพันจะทำให้ยอดที่กันไว้ติดลบ
+   * และยอดที่ใช้ไปค้างสูงเกินจริง ทั้งที่ยอดที่ใช้ได้ยังถูก — ความผิดที่ซ่อนอยู่
+   * ในช่องที่คนอ่านรายงานใช้ตัดสินใจ แต่ไม่โผล่ในช่องที่ระบบใช้ตรวจว่าเงินพอ
+   */
+  it('คืนยอดผูกพันลดยอดที่ใช้ไป ไม่ใช่ลดยอดที่กันไว้', () => {
+    const commitment = move('COMMIT', '3000.00', { id: 'cm1' });
+    const summary = summarize([
+      move('ALLOCATION', '10000.00'),
+      commitment,
+      move('RELEASE', '3000.00', { releasesMovementId: 'cm1' }),
+    ]);
+
+    expect(summary.usedSatang).toBe(0n);
+    expect(summary.reservedSatang).toBe(0n);
+    expect(summary.availableSatang).toBe(decimalStringToSatang('10000.00'));
+  });
+
+  /*
+   * การแปลงยอดที่กันไว้เป็นยอดผูกพัน — ยอดที่ใช้ได้ต้องไม่ขยับ
+   *
+   * เป็นสิ่งที่เกิดจริงตอนออกใบสั่งซื้อ: คืนยอดที่กันไว้แล้วลงผูกพันเท่ากันทันที
+   */
+  it('แปลงยอดที่กันไว้เป็นยอดผูกพันแล้วยอดที่ใช้ได้ไม่ขยับ', () => {
+    const reserve = move('RESERVE', '2500.00', { id: 'rs1' });
+    const before = summarize([move('ALLOCATION', '4000.00'), reserve]);
+
+    const after = summarize([
+      move('ALLOCATION', '4000.00'),
+      reserve,
+      move('RELEASE', '2500.00', { releasesMovementId: 'rs1' }),
+      move('COMMIT', '2500.00'),
+    ]);
+
+    expect(after.availableSatang).toBe(before.availableSatang);
+    expect(after.reservedSatang).toBe(0n);
+    expect(after.usedSatang).toBe(decimalStringToSatang('2500.00'));
+  });
+
+  /*
+   * ย้อนการคืนยอดผูกพันต้องกลับไปเป็นผูกพันตามเดิม
+   *
+   * `REVERSAL` ต้องมองทะลุไปถึงแถวที่ RELEASE นั้นคืนให้ ไม่ใช่แค่รู้ว่าย้อน RELEASE
+   * — นี่คือเส้นทางที่การยกเลิกการเบิกจ่ายใช้จริง
+   */
+  it('ย้อนการคืนยอดผูกพันแล้วยอดกลับไปเป็นผูกพัน', () => {
+    const commitment = move('COMMIT', '1000.00', { id: 'cm2' });
+    const release = move('RELEASE', '1000.00', { id: 'rl2', releasesMovementId: 'cm2' });
+    const summary = summarize([
+      move('ALLOCATION', '5000.00'),
+      commitment,
+      release,
+      move('REVERSAL', '1000.00', { reversesMovementId: 'rl2' }),
+    ]);
+
+    expect(summary.usedSatang).toBe(decimalStringToSatang('1000.00'));
+    expect(summary.reservedSatang).toBe(0n);
+    expect(summary.availableSatang).toBe(decimalStringToSatang('4000.00'));
+  });
+
   it('ไม่มีรายการเลย ยอดเป็นศูนย์ทุกช่อง', () => {
     expect(summarize([])).toEqual({
       grantedSatang: 0n,
@@ -180,11 +243,26 @@ describe('ความถูกต้องเชิงรูปแบบขอ�
     ).toThrow(/ถูกย้อนไปแล้ว/);
   });
 
-  it('คืนยอดได้เฉพาะรายการที่เป็นการกันยอด', () => {
-    const commit = move('COMMIT', '100.00', { id: 'c1' });
+  /*
+   * คืนยอดได้เฉพาะรายการที่ยังถือเงินไว้ คือการกันยอดและการผูกพันงบ (PR-04e)
+   *
+   * `ACTUAL` คือเงินที่จ่ายออกไปแล้ว การยอมให้คืนด้วย RELEASE เท่ากับเปิดทาง
+   * ให้ลบร่องรอยการจ่ายเงินออกจากยอดโดยไม่มีรายการย้อนให้ผู้ตรวจสอบเห็น
+   */
+  it('คืนยอดให้การผูกพันงบได้', () => {
+    const commitment = move('COMMIT', '100.00', { id: 'c1' });
     expect(() =>
-      assertMovementShapeValid(move('RELEASE', '100.00', { releasesMovementId: 'c1' }), [commit]),
-    ).toThrow(/เฉพาะรายการที่เป็นการกันยอด/);
+      assertMovementShapeValid(move('RELEASE', '100.00', { releasesMovementId: 'c1' }), [
+        commitment,
+      ]),
+    ).not.toThrow();
+  });
+
+  it('คืนยอดให้รายการที่จ่ายจริงไปแล้วไม่ได้', () => {
+    const actual = move('ACTUAL', '100.00', { id: 'a1' });
+    expect(() =>
+      assertMovementShapeValid(move('RELEASE', '100.00', { releasesMovementId: 'a1' }), [actual]),
+    ).toThrow(/การกันยอดหรือการผูกพันงบ/);
   });
 
   it('คืนยอดเกินจำนวนที่กันไว้ไม่ได้', () => {

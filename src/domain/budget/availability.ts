@@ -23,25 +23,43 @@ export interface BudgetSummary {
 
 // GRANT เป็นกลุ่มปริยาย: ชนิดที่ไม่ใช่การกันยอดและไม่ใช่การใช้ยอด ถือเป็นการให้/ลดงบ
 // เขียนแบบนี้เพื่อให้ชนิดใหม่ที่เพิ่มภายหลังไม่หายไปจากสรุปโดยเงียบ ๆ
-const RESERVE_TYPES: readonly MovementType[] = ['RESERVE', 'RELEASE'];
+const RESERVE_TYPES: readonly MovementType[] = ['RESERVE'];
 
 const USE_TYPES: readonly MovementType[] = ['COMMIT', 'ACTUAL'];
 
 /**
  * จัดกลุ่มแถวหนึ่งว่าไปอยู่ยอดไหนในสรุป
  *
- * REVERSAL ไปอยู่กลุ่มเดียวกับแถวที่มันย้อน มิฉะนั้นการย้อนการกันยอด
- * จะไปลดยอดงบที่ได้รับแทนที่จะคืนยอดที่กันไว้ ซึ่งทำให้สรุปอ่านผิด
+ * สองชนิดไม่มีกลุ่มของตัวเอง เพราะกลุ่มขึ้นกับแถวที่มันอ้างถึง:
+ *
+ *   - `REVERSAL` ไปอยู่กลุ่มเดียวกับแถวที่มันย้อน มิฉะนั้นการย้อนการกันยอด
+ *     จะไปลดยอดงบที่ได้รับแทนที่จะคืนยอดที่กันไว้ ซึ่งทำให้สรุปอ่านผิด
+ *   - `RELEASE` ไปอยู่กลุ่มเดียวกับแถวที่มันคืนยอดให้ — คืนการกันยอดต้องลด
+ *     "ยอดที่กันไว้" ส่วนคืนการผูกพันต้องลด "ยอดที่ใช้ไป" ถ้าตรึงให้อยู่กลุ่ม
+ *     กันยอดเสมอ การคืนยอดผูกพันจะทำให้ยอดที่กันไว้ติดลบและยอดที่ใช้ไปค้างสูงเกินจริง
+ *
+ * กติกาเดียวกันนี้อยู่ใน view `budget_account_balances` และฟังก์ชัน
+ * `budget_report_rows()` ด้วย และมี SQL test เทียบผลของทั้งสามทาง
  */
 function bucketOf(
   movement: BudgetMovement,
   byId: ReadonlyMap<string, BudgetMovement>,
 ): 'GRANT' | 'RESERVE' | 'USE' {
   let effectiveType = movement.type;
+  let releasesId = movement.releasesMovementId;
 
   if (movement.type === 'REVERSAL' && movement.reversesMovementId) {
     const target = byId.get(movement.reversesMovementId);
-    if (target) effectiveType = target.type;
+    if (target) {
+      effectiveType = target.type;
+      releasesId = target.releasesMovementId;
+    }
+  }
+
+  if (effectiveType === 'RELEASE') {
+    /* ไม่รู้ว่าคืนให้อะไร ถือเป็นการคืนยอดที่กันไว้ ซึ่งเป็นกรณีเดิมของระบบ */
+    const released = releasesId ? byId.get(releasesId) : undefined;
+    return released && released.type === 'COMMIT' ? 'USE' : 'RESERVE';
   }
 
   if (RESERVE_TYPES.includes(effectiveType)) return 'RESERVE';

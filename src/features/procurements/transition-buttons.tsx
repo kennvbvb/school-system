@@ -18,6 +18,25 @@ import type { ProcurementAction, ProcurementStatus } from '@/domain/procurement/
  * การกระทำที่ต้องมีเหตุผลจะกางช่องกรอกออกมาก่อน แล้วจึงยืนยัน ไม่ใช่กดแล้วส่งเลย
  * เพราะการบังคับเหตุผลหลังกดจะทำให้ผู้ใช้เจอ error ทั้งที่ยังไม่มีโอกาสกรอก
  */
+/**
+ * คำเตือนของแต่ละผลที่ปุ่มมีต่อเงิน
+ *
+ * เรียงตามลำดับที่ต้องการให้อ่าน ไม่ใช่ตามลำดับที่พบในปุ่ม — ผู้ใช้ที่เห็น
+ * สองข้อพร้อมกันควรอ่านข้อที่เกิดก่อนในเวลาจริงก่อน
+ */
+const BUDGET_EFFECT_NOTES: readonly { effect: 'RESERVE' | 'COMMIT' | 'RELEASE'; text: string }[] = [
+  {
+    effect: 'RESERVE',
+    text: 'การอนุมัติจะกันยอดงบตามแหล่งเงินที่ระบุทันที ถ้ายอดคงเหลือไม่พอ การอนุมัติจะไม่สำเร็จ',
+  },
+  {
+    effect: 'COMMIT',
+    /* ยอดที่ใช้ได้ไม่ขยับ จึงต้องบอกให้ชัดว่านี่ไม่ใช่การกันยอดเพิ่ม */
+    text: 'การออกใบสั่งซื้อจะเปลี่ยนยอดที่กันไว้เป็นยอดผูกพัน ยอดงบคงเหลือไม่เปลี่ยน',
+  },
+  { effect: 'RELEASE', text: 'การยกเลิกจะคืนยอดงบที่ถือไว้ให้บัญชีเดิม' },
+];
+
 export function TransitionButtons({
   status,
   actions,
@@ -71,7 +90,7 @@ export function TransitionButtons({
         const rule = findTransition(status, action);
         return rule ? budgetEffectOf(status, rule.to) : null;
       })
-      .filter((effect): effect is 'RESERVE' | 'RELEASE' => effect !== null),
+      .filter((effect): effect is 'RESERVE' | 'COMMIT' | 'RELEASE' => effect !== null),
   );
 
   return (
@@ -112,11 +131,9 @@ export function TransitionButtons({
 
       {pending === null && budgetEffects.size > 0 ? (
         <p className="text-sm text-slate-600">
-          {budgetEffects.has('RESERVE')
-            ? 'การอนุมัติจะกันยอดงบตามแหล่งเงินที่ระบุทันที ถ้ายอดคงเหลือไม่พอ การอนุมัติจะไม่สำเร็จ'
-            : null}
-          {budgetEffects.has('RESERVE') && budgetEffects.has('RELEASE') ? ' · ' : null}
-          {budgetEffects.has('RELEASE') ? 'การยกเลิกจะคืนยอดงบที่กันไว้ให้บัญชีเดิม' : null}
+          {BUDGET_EFFECT_NOTES.filter((note) => budgetEffects.has(note.effect))
+            .map((note) => note.text)
+            .join(' · ')}
         </p>
       ) : null}
 

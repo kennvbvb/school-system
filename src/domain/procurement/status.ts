@@ -163,20 +163,39 @@ export function isEditableStatus(status: ProcurementStatus): boolean {
 }
 
 /**
+ * ชนิดของ "ยอดที่ถูกถือไว้" ของรายการจัดซื้อหนึ่ง
+ *
+ *   - `RESERVE` = กันยอดไว้เพราะอนุมัติแล้ว แต่ยังไม่มีข้อผูกพันกับผู้ขาย
+ *     ยกเลิกได้โดยไม่มีภาระผูกพัน
+ *   - `COMMIT` = ผูกพันงบแล้วเพราะออกใบสั่งซื้อ/สั่งจ้างไปหาผู้ขายแล้ว
+ *
+ * สองอย่างนี้ทำให้ยอดที่ใช้ได้ลดลงเท่ากัน แต่ **ความหมายทางบัญชีต่างกัน**
+ * และการรายงานสิ้นปีต้องแยกออกจากกัน เพราะยอดผูกพันคือภาระที่โรงเรียนต้องจ่าย
+ * ส่วนยอดที่กันไว้เฉย ๆ คืนได้
+ */
+export type HeldBudgetKind = 'RESERVE' | 'COMMIT';
+
+/**
  * สถานะที่ถือยอดงบที่กันไว้ (PR-04c)
  *
- * ระบบลงรายการ `RESERVE` ตอน **เข้า** สถานะกลุ่มนี้ และลง `RELEASE` ตอน **ออก**
- * จากกลุ่มนี้ไปสถานะที่ไม่ถือยอด — ตัดสินจากสถานะก่อนและหลัง ไม่ใช่จากชื่อ action
- * เพราะเส้นทางใหม่ที่เพิ่มภายหลังจะได้พฤติกรรมที่ถูกต้องโดยอัตโนมัติ
- *
- * `RECEIVED` ยังถือยอดไว้ เพราะรับของแล้วแต่ยังไม่ได้เบิกจ่าย เงินยังผูกพันอยู่
- * **การแปลงยอดที่กันไว้เป็นค่าใช้จ่ายจริงยังไม่มีในรอบนี้** เป็นงานของการเบิกจ่าย
+ * **มีเพียง `APPROVED` เท่านั้น** ตั้งแต่ PR-04e เป็นต้นไป — เมื่อออกใบสั่งซื้อ
+ * ยอดที่กันไว้จะถูกแปลงเป็นยอดผูกพัน ไม่ใช่ถูกกันไว้ต่อ
  *
  * รายการนี้อยู่สองที่โดยจำเป็น — ที่นี่กับ `status_holds_reservation()` ใน
  * migration 0017 และมี `tests/unit/reservation-parity.test.ts` อ่าน SQL จริงมาเทียบ
  */
-export const STATUSES_HOLDING_RESERVATION: readonly ProcurementStatus[] = [
-  'APPROVED',
+export const STATUSES_HOLDING_RESERVATION: readonly ProcurementStatus[] = ['APPROVED'];
+
+/**
+ * สถานะที่ถือยอดผูกพัน (PR-04e)
+ *
+ * เริ่มที่ `ISSUED` เพราะการออกใบสั่งซื้อคือจุดที่โรงเรียนมีข้อผูกพันกับผู้ขายจริง
+ * `RECEIVED` ยังผูกพันอยู่ เพราะรับของแล้วแต่ยังไม่ได้จ่าย เงินยังต้องกันไว้ให้
+ *
+ * เช่นเดียวกัน — อยู่คู่กับ `status_holds_commitment()` ใน migration 0021
+ * และมี parity test อ่าน SQL จริงมาเทียบ
+ */
+export const STATUSES_HOLDING_COMMITMENT: readonly ProcurementStatus[] = [
   'ISSUED',
   'PARTIALLY_RECEIVED',
   'RECEIVED',
@@ -186,22 +205,45 @@ export function statusHoldsReservation(status: ProcurementStatus): boolean {
   return STATUSES_HOLDING_RESERVATION.includes(status);
 }
 
+export function statusHoldsCommitment(status: ProcurementStatus): boolean {
+  return STATUSES_HOLDING_COMMITMENT.includes(status);
+}
+
 /**
- * การเปลี่ยนสถานะนี้ทำให้เกิดการกันยอดหรือคืนยอดหรือไม่
+ * ชนิดของยอดที่สถานะนี้ถือไว้ — null คือไม่ถืออะไรเลย
  *
- * มีไว้ให้หน้าจอเตือนผู้ใช้ก่อนกด — การอนุมัติที่กันยอดงบไม่ได้จะล้มทั้งชุด
- * ผู้ใช้ควรรู้ล่วงหน้าว่าปุ่มนี้แตะเงิน ไม่ใช่แค่เปลี่ยนสถานะ
+ * สถานะหนึ่งถือได้อย่างมากหนึ่งชนิด มี unit test บังคับว่าสองรายการข้างบน
+ * ไม่ซ้อนทับกัน เพราะสถานะที่ถือทั้งสองชนิดจะทำให้รายการเดียวกินงบสองเท่า
+ */
+export function heldBudgetKindOf(status: ProcurementStatus): HeldBudgetKind | null {
+  if (statusHoldsReservation(status)) return 'RESERVE';
+  if (statusHoldsCommitment(status)) return 'COMMIT';
+  return null;
+}
+
+/**
+ * ผลที่การเปลี่ยนสถานะมีต่อยอดงบ
+ *
+ * มีไว้ให้หน้าจอเตือนผู้ใช้ก่อนกด — ปุ่มที่แตะเงินต้องบอกผู้ใช้ก่อน ไม่ใช่
+ * ให้รู้ตัวตอนที่คำสั่งล้มเพราะงบไม่พอ
+ *
+ * ตัดสินจาก **ชนิดของยอดที่ถือก่อนและหลัง** ไม่ใช่จากชื่อ action เพราะเส้นทางใหม่
+ * ที่เพิ่มภายหลังจะได้พฤติกรรมที่ถูกต้องเองโดยไม่ต้องแก้ที่นี่
+ *
+ *   - `RESERVE` = เริ่มกันยอด
+ *   - `COMMIT`  = ผูกพันงบ (แปลงจากยอดที่กันไว้ หรือผูกพันโดยตรง)
+ *   - `RELEASE` = คืนยอดที่ถือไว้ทั้งหมด
  */
 export function budgetEffectOf(
   from: ProcurementStatus,
   to: ProcurementStatus,
-): 'RESERVE' | 'RELEASE' | null {
-  const before = statusHoldsReservation(from);
-  const after = statusHoldsReservation(to);
+): 'RESERVE' | 'COMMIT' | 'RELEASE' | null {
+  const before = heldBudgetKindOf(from);
+  const after = heldBudgetKindOf(to);
 
-  if (after && !before) return 'RESERVE';
-  if (before && !after) return 'RELEASE';
-  return null;
+  if (before === after) return null;
+  if (after === null) return 'RELEASE';
+  return after;
 }
 
 export function findTransition(
