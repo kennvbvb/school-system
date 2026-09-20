@@ -510,12 +510,48 @@ select pg_temp.assert_eq(
    where n.nspname = 'public' and p.proname = 'procurement_register_rows'),
   false, 'ฟังก์ชันเป็น security invoker เพื่อให้ RLS เป็นตัวบังคับ');
 
-/* ผู้ที่ยังไม่ได้เข้าสู่ระบบต้องเรียกไม่ได้เลย */
+/*
+ * สิทธิ์เรียกฟังก์ชันของ `authenticated` ต้องยังอยู่
+ *
+ * ถ้า grant นี้หลุดไป ทั้งหน้าจอจะพังพร้อมกันโดยที่ข้อทดสอบอื่นในไฟล์นี้
+ * ยังผ่านหมด เพราะข้ออื่นรันในนาม `authenticated` อยู่แล้วและจะล้มด้วยกันทั้งหมด
+ * จนอ่านไม่ออกว่าต้นเหตุคืออะไร
+ *
+ * **ไม่ตรวจว่า `anon` เรียกไม่ได้** เพราะไม่ใช่กลไกที่กันจริงในระบบนี้:
+ * Supabase ให้ EXECUTE กับ `anon` เป็นค่าเริ่มต้นสำหรับฟังก์ชันใน schema public
+ * (ต่างจาก local-harness.sql ที่ไม่ได้ตั้งค่านั้นไว้) การตรวจระดับ grant จึงเป็น
+ * การตรวจว่า harness ตั้งค่าอย่างไร ไม่ใช่ตรวจว่าระบบกันได้จริงหรือไม่
+ *
+ * สิ่งที่กันจริงคือ RLS — ข้อถัดไปพิสูจน์ตรง ๆ
+ */
 select pg_temp.assert_eq(
-  (select has_function_privilege('anon', p.oid, 'execute')
+  (select has_function_privilege('authenticated', p.oid, 'execute')
    from pg_proc p
    join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname = 'procurement_register_rows'),
-  false, 'ผู้ที่ยังไม่เข้าสู่ระบบเรียกฟังก์ชันนี้ไม่ได้');
+  true, 'ผู้ที่เข้าสู่ระบบแล้วเรียกฟังก์ชันนี้ได้');
+
+/*
+ * แม้ `anon` จะเรียกฟังก์ชันได้ ก็ต้องไม่ได้ข้อมูลสักแถว
+ *
+ * ให้ EXECUTE กับ `anon` ในทรานแซกชันนี้เองเพื่อจำลองสภาพของ Supabase จริง
+ * และเพื่อให้ข้อนี้ให้คำตอบเดียวกันทั้งบน harness และบน CI — grant นี้ย้อนกลับ
+ * พร้อม rollback ท้ายไฟล์ จึงไม่ค้างอยู่ในฐานข้อมูล
+ *
+ * ข้อนี้พิสูจน์ว่า **grant ไม่ใช่ด่านที่กัน** — policy ของ procurements เป็น
+ * `to authenticated` ทั้งหมด ผู้เรียกที่ไม่ใช่ role นั้นจึงไม่เข้าเงื่อนไขใดเลย
+ * แม้จะมี JWT ของผู้ใช้จริงค้างอยู่ใน session ก็ตาม (ตั้งไว้ตั้งแต่ข้อก่อนหน้า)
+ */
+grant execute on function public.procurement_register_rows(
+  uuid, public.procurement_classification, public.procurement_status, date, date, integer
+) to anon;
+
+set local role anon;
+
+select pg_temp.assert_eq(
+  (select count(*)::integer from public.procurement_register_rows()),
+  0, 'ผู้ที่ยังไม่เข้าสู่ระบบไม่ได้ข้อมูลสักแถว');
+
+reset role;
 
 rollback;
