@@ -145,3 +145,23 @@ test('ตัวกรองในรายงานงบไม่ทำให�
   await page.goto('/reports/budget?fiscalYearId=ไม่ใช่uuid&asOf=31/09/2568&dimension=xxx');
   await expect(page).toHaveURL(/\/login\?returnTo=/);
 });
+
+test('หน้าทะเบียนจัดซื้อจัดจ้างถูกกันไว้และจำปลายทางเดิม', async ({ page }) => {
+  /*
+   * ทะเบียนรวมชื่อเรื่อง ผู้ขาย เลขที่เอกสาร และยอดเงินของทั้งโรงเรียนไว้ในหน้าเดียว
+   * เป็นภาพรวมของการใช้จ่ายที่ต้องกันไว้ก่อนเข้าสู่ระบบเสมอ ไม่ใช่กันด้วยการซ่อนเมนู
+   */
+  await page.goto('/reports/procurements');
+  await expect(page).toHaveURL(/\/login\?returnTo=%2Freports%2Fprocurements$/);
+});
+
+test('ตัวกรองในทะเบียนไม่ทำให้หน้าล้มก่อนตรวจสิทธิ์', async ({ page }) => {
+  /*
+   * ค่าที่ผิดรูปแบบต้องถูกปัดทิ้งที่ schema ไม่ใช่ทำให้ได้หน้า error
+   * ซึ่งจะบอกผู้ไม่มีสิทธิ์ว่ามีหน้านี้อยู่จริงและทำงานถึงชั้นไหนแล้ว
+   */
+  await page.goto(
+    '/reports/procurements?fiscalYearId=ไม่ใช่uuid&status=xxx&classification=yyy&dateFrom=31/09/2568',
+  );
+  await expect(page).toHaveURL(/\/login\?returnTo=/);
+});

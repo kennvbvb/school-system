@@ -78,11 +78,14 @@ export const NAV_SECTIONS: readonly NavSection[] = [
         labelTh: 'รายงานงบประมาณ',
         anyOf: ['budget.read', 'budget.manage'],
       },
+      /* ใช้ procurement.read.all ด้วยเหตุผลเดียวกับด้านบน บวกอีกข้อหนึ่ง:
+         "ทะเบียน" ที่เห็นเฉพาะรายการของตัวเองคือสมุดคุมที่ไม่ครบเล่ม
+         ผู้อ่านจะสรุปยอดของโรงเรียนจากมันโดยไม่รู้ว่ายังขาดอะไรอยู่
+         จึงไม่รวม procurement.read.own ไว้ในเงื่อนไขนี้ */
       {
         href: '/reports/procurements',
-        labelTh: 'รายงานจัดซื้อจัดจ้าง',
-        anyOf: ['reports.export'],
-        comingSoon: true,
+        labelTh: 'ทะเบียนจัดซื้อจัดจ้าง',
+        anyOf: ['procurement.read.all'],
       },
     ],
   },

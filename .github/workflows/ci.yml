@@ -150,6 +150,12 @@ jobs:
         # และบัญชีที่ยังไม่มีรายการหรือไม่ได้ผูกโครงการต้องไม่หายไปจากผลลัพธ์
         run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/budget_report_test.sql
 
+      - name: ทดสอบฟังก์ชันทะเบียนจัดซื้อจัดจ้างบนฐานข้อมูลจริง
+        # ขอบเขตแถวต้องมาจาก RLS ไม่ใช่จากหน้าจอ — ผู้ที่มีเพียง read.own
+        # ต้องเห็นเฉพาะรายการของตนแม้จะเรียก RPC ตรง และยอดต้องตรงกับ
+        # view procurement_totals ทุกแถว
+        run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/procurement_register_test.sql
+
   e2e:
     name: End-to-end smoke tests
     runs-on: ubuntu-latest

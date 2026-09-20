@@ -3,6 +3,13 @@ import { createSupabaseServerClient } from '@/server/supabase/server-client';
 import { decimalStringToSatang } from '@/domain/money/money';
 import type { BudgetReportRow } from '@/domain/budget/report';
 import type { BudgetReportFilter } from '@/domain/budget/report-schemas';
+import type { ProcurementStatus } from '@/domain/procurement/status';
+import type {
+  ProcurementClassification,
+  ProcurementMethodCode,
+} from '@/domain/procurement/schemas';
+import type { DocumentNumberStatus, ProcurementRegisterRow } from '@/domain/procurement/register';
+import type { ProcurementRegisterFilter } from '@/domain/procurement/register-schemas';
 
 /**
  * การอ่านข้อมูลสำหรับรายงานงบประมาณ
@@ -105,4 +112,104 @@ export async function loadFiscalYearOptions(): Promise<FiscalYearOption[]> {
     id: row.id,
     label: `${row.code} (พ.ศ. ${row.year_be})${row.status === 'CLOSED' ? ' — ปิดแล้ว' : ''}`,
   }));
+}
+
+// -----------------------------------------------------------------------------
+// ทะเบียนจัดซื้อจัดจ้าง (PR-09b)
+// -----------------------------------------------------------------------------
+
+/**
+ * เพดานจำนวนแถวที่หน้าเดียวรับไหว
+ *
+ * ทะเบียนไม่แบ่งหน้าโดยตั้งใจ — ยอดรวมและยอดรายสถานะต้องคิดจากแถวชุดเดียวกับ
+ * ที่แสดง ถ้าแบ่งหน้าแล้วคิดยอดรวมจาก query อีกชุด ตัวเลขสองส่วนจะค่อย ๆ
+ * ไม่ตรงกันโดยไม่มีอะไรฟ้อง (เหตุผลเดียวกับ src/domain/budget/report.ts)
+ *
+ * เมื่อข้อมูลเกินเพดาน หน้าจอ **ไม่แสดงยอดรวมเลย** แทนที่จะแสดงยอดของแถว
+ * ที่เหลือรอด — ยอดรวมบางส่วนที่ติดป้ายว่า "ยอดรวม" คือคำตอบที่ผิดและน่าเชื่อ
+ */
+export const REGISTER_ROW_LIMIT = 1000;
+
+interface RegisterDbRow {
+  procurement_id: string;
+  reference: string;
+  subject: string;
+  status: ProcurementStatus;
+  classification: ProcurementClassification | null;
+  procurement_method: ProcurementMethodCode | null;
+  is_emergency: boolean;
+  fiscal_year_id: string;
+  fiscal_year_code: string | null;
+  department_name: string | null;
+  vendor_name: string | null;
+  request_date: string;
+  order_or_agreement_date: string | null;
+  request_memo_no: string | null;
+  request_memo_status: DocumentNumberStatus | null;
+  purchase_order_no: string | null;
+  purchase_order_status: DocumentNumberStatus | null;
+  grand_total: string;
+  funding_total: string;
+}
+
+export interface ProcurementRegisterResult {
+  rows: ProcurementRegisterRow[];
+  /** true = ยังมีแถวที่ตรงตัวกรองอยู่อีก แต่เกินเพดานจึงไม่ได้ถูกดึงมา */
+  truncated: boolean;
+}
+
+/**
+ * อ่านทะเบียนตามตัวกรอง พร้อมบอกว่าถูกตัดแถวหรือไม่
+ *
+ * ขอเกินเพดานหนึ่งแถวเพื่อให้รู้ว่ามีแถวที่ถูกตัดจริง — วิธีนับจำนวนทั้งหมด
+ * ด้วย query แยกจะบอกได้เหมือนกัน แต่เป็นการอ่านสองครั้งที่อาจเห็นข้อมูลคนละ
+ * ช่วงเวลา ทำให้หน้าจอบอกว่า "ครบแล้ว" ทั้งที่เพิ่งมีแถวใหม่เข้ามา
+ *
+ * เรียกผ่าน client ของผู้ใช้ และ function เป็น security invoker — **RLS ของ
+ * public.procurements เป็นตัวกำหนดขอบเขตแถวจริง** ผู้ที่มีเพียง
+ * procurement.read.own จะได้เฉพาะรายการของตน แม้จะเรียก RPC ตรงก็ตาม
+ */
+export async function loadProcurementRegister(
+  filter: ProcurementRegisterFilter,
+): Promise<ProcurementRegisterResult> {
+  const supabase = await createSupabaseServerClient();
+
+  const { data, error } = await supabase.rpc('procurement_register_rows', {
+    p_fiscal_year_id: filter.fiscalYearId ?? null,
+    p_classification: filter.classification ?? null,
+    p_status: filter.status ?? null,
+    p_date_from: filter.dateFrom ?? null,
+    p_date_to: filter.dateTo ?? null,
+    p_limit: REGISTER_ROW_LIMIT + 1,
+  });
+
+  if (error) throw new Error(error.message);
+
+  const dbRows = (data ?? []) as RegisterDbRow[];
+  const truncated = dbRows.length > REGISTER_ROW_LIMIT;
+
+  return {
+    truncated,
+    rows: dbRows.slice(0, REGISTER_ROW_LIMIT).map((row) => ({
+      procurementId: row.procurement_id,
+      reference: row.reference,
+      subject: row.subject,
+      status: row.status,
+      classification: row.classification,
+      method: row.procurement_method,
+      isEmergency: row.is_emergency,
+      fiscalYearId: row.fiscal_year_id,
+      fiscalYearCode: row.fiscal_year_code,
+      departmentName: row.department_name,
+      vendorName: row.vendor_name,
+      requestDate: row.request_date,
+      orderDate: row.order_or_agreement_date,
+      requestMemoNo: row.request_memo_no,
+      requestMemoStatus: row.request_memo_status,
+      purchaseOrderNo: row.purchase_order_no,
+      purchaseOrderStatus: row.purchase_order_status,
+      grandTotalSatang: toSatang(row.grand_total),
+      fundingTotalSatang: toSatang(row.funding_total),
+    })),
+  };
 }
