@@ -119,6 +119,20 @@ values
   ('faaaaaaa-0000-4000-8000-000000000001', 1, 'f0000000-0000-4000-8000-000000000003', 2500.00),
   ('faaaaaaa-0000-4000-8000-000000000002', 1, 'f0000000-0000-4000-8000-000000000003', 2500.00);
 
+/* ยอดที่ยังถือไว้ของรายการหนึ่ง — ฟังก์ชันจริงถูกเพิกถอนจาก authenticated
+   จึงห่อด้วย security definer ใน pg_temp แทนการเปิดสิทธิ์ให้ของจริง */
+create or replace function pg_temp.holds(p_procurement uuid, p_type text)
+returns numeric language sql security definer as $$
+  select coalesce(sum(outstanding), 0)
+  from public.procurement_outstanding_hold(p_procurement)
+  where p_type is null or hold_type::text = p_type;
+$$;
+
+create or replace function pg_temp.hold_rows(p_procurement uuid)
+returns integer language sql security definer as $$
+  select count(*)::integer from public.procurement_outstanding_hold(p_procurement);
+$$;
+
 set local role authenticated;
 
 -- ตั้งงบ 4,000 — พอสำหรับรายการเดียวเท่านั้น
@@ -209,14 +223,43 @@ select pg_temp.assert_eq(
 set local request.jwt.claim.sub = 'f5555555-5555-4555-8555-555555555555';
 select pg_temp.act('faaaaaaa-0000-4000-8000-000000000001', 'issue');
 
+/*
+ * ออกใบสั่งซื้อแล้ว **ยอดที่ใช้ได้ต้องไม่ขยับ** (PR-04e)
+ *
+ * ยอดถูกแปลงจาก "กันไว้" เป็น "ผูกพัน" ด้วยการคืนแล้วลงใหม่จำนวนเท่ากัน
+ * ทั้งสองแถวหักล้างกันพอดี ถ้าลำดับผิดหรือจำนวนไม่ตรง ยอดตรงนี้จะเพี้ยนทันที
+ */
 select pg_temp.assert_eq(
   pg_temp.available('f0000000-0000-4000-8000-000000000003'), 1500.00::numeric,
-  'ออกเอกสารแล้วไม่กันยอดซ้ำ');
+  'ออกเอกสารแล้วยอดที่ใช้ได้ไม่ขยับ');
 
 select pg_temp.assert_eq(
   (select count(*)::integer from public.budget_movements
    where source_id = 'faaaaaaa-0000-4000-8000-000000000001' and movement_type = 'RESERVE'),
-  1, 'ยังมีรายการกันยอดเพียงแถวเดียว');
+  1, 'ไม่กันยอดซ้ำ — ยังมีรายการกันยอดเพียงแถวเดียว');
+
+select pg_temp.assert_eq(
+  (select count(*)::integer from public.budget_movements
+   where source_id = 'faaaaaaa-0000-4000-8000-000000000001' and movement_type = 'COMMIT'),
+  1, 'เกิดรายการผูกพันงบหนึ่งแถว');
+
+/* ยอดที่กันไว้ถูกคืนจนหมด เหลือแต่ยอดผูกพัน — ถ้าเหลือทั้งคู่ เงินจะถูกนับสองเท่า */
+select pg_temp.assert_eq(
+  pg_temp.holds('faaaaaaa-0000-4000-8000-000000000001', 'RESERVE'), 0::numeric, 'ยอดที่กันไว้ถูกคืนจนหมดเมื่อแปลงเป็นยอดผูกพัน');
+
+select pg_temp.assert_eq(
+  pg_temp.holds('faaaaaaa-0000-4000-8000-000000000001', 'COMMIT'), 2500.00::numeric, 'ยอดผูกพันเท่ากับยอดที่เคยกันไว้');
+
+/* ยอดผูกพันอยู่ในช่อง "ใช้ไปแล้ว" ไม่ใช่ช่อง "กันไว้" */
+select pg_temp.assert_eq(
+  (select reserved_amount from public.budget_account_balances
+   where budget_account_id = 'f0000000-0000-4000-8000-000000000003'),
+  0.00::numeric, 'ยอดที่กันไว้กลับเป็นศูนย์หลังแปลงเป็นยอดผูกพัน');
+
+select pg_temp.assert_eq(
+  (select used_amount from public.budget_account_balances
+   where budget_account_id = 'f0000000-0000-4000-8000-000000000003'),
+  2500.00::numeric, 'ยอดผูกพันไปอยู่ช่องยอดที่ใช้ไปแล้ว');
 
 -- ---------------------------------------------------------------------------
 -- ยกเลิกแล้วคืนยอดครบ
@@ -228,10 +271,25 @@ select pg_temp.assert_eq(
   pg_temp.available('f0000000-0000-4000-8000-000000000003'), 4000.00::numeric,
   'ยกเลิกแล้วยอดกลับมาครบ 4,000');
 
+/*
+ * คืนยอดสองแถว ไม่ใช่แถวเดียว (PR-04e)
+ *
+ * แถวแรกเกิดตอนออกใบสั่งซื้อ (คืนยอดที่กันไว้เพื่อแปลงเป็นยอดผูกพัน)
+ * แถวที่สองเกิดตอนยกเลิก (คืนยอดผูกพัน) — ยอดที่ใช้ได้ข้างบนยืนยันแล้วว่าครบ
+ */
 select pg_temp.assert_eq(
   (select count(*)::integer from public.budget_movements
    where source_id = 'faaaaaaa-0000-4000-8000-000000000001' and movement_type = 'RELEASE'),
-  1, 'มีรายการคืนยอดหนึ่งแถว');
+  2, 'มีรายการคืนยอดสองแถว — ตอนแปลงเป็นยอดผูกพัน และตอนยกเลิก');
+
+/* ยกเลิกแล้วต้องไม่เหลือยอดที่ถือไว้เลย ไม่ว่าชนิดใด — อาการ "ผูกพันตลอดกาล" */
+select pg_temp.assert_eq(
+  pg_temp.hold_rows('faaaaaaa-0000-4000-8000-000000000001'), 0, 'ยกเลิกแล้วไม่เหลือยอดที่ถือไว้เลย');
+
+select pg_temp.assert_eq(
+  (select used_amount from public.budget_account_balances
+   where budget_account_id = 'f0000000-0000-4000-8000-000000000003'),
+  0.00::numeric, 'ยกเลิกแล้วยอดที่ใช้ไปกลับเป็นศูนย์ ไม่ค้างเป็นยอดผูกพัน');
 
 -- เมื่อยอดว่างแล้ว ใบที่สองอนุมัติได้
 set local request.jwt.claim.sub = 'f3333333-3333-4333-8333-333333333333';
@@ -330,22 +388,46 @@ select set_config('app.budget_workflow_posting', 'off', true);
 
 set local request.jwt.claim.sub = 'f6666666-6666-4666-8666-666666666666';
 
+/*
+ * audit บันทึก **ชนิดของยอดที่ถือก่อนและหลัง** ไม่ใช่แค่ว่ากันยอด/คืนยอด (PR-04e)
+ *
+ * ผู้ตรวจสอบจึงอ่านได้ว่าเงินเปลี่ยนจาก "กันไว้" เป็น "ผูกพัน" ตอนไหน
+ * ซึ่งเป็นคำถามที่การตรวจสอบเงินกันเหลื่อมปีต้องตอบ
+ */
 select pg_temp.assert_eq(
   (select count(*)::integer from public.audit_events
    where action = 'procurement.status_change'
-     and metadata_json ->> 'budget_reserved' = 'true'),
+     and metadata_json ->> 'budget_hold_before' is null
+     and metadata_json ->> 'budget_hold_after' = 'RESERVE'),
   2, 'audit บันทึกว่าการอนุมัติกันยอด');
 
 select pg_temp.assert_eq(
   (select count(*)::integer from public.audit_events
    where action = 'procurement.status_change'
-     and metadata_json ->> 'budget_released' = 'true'),
+     and metadata_json ->> 'budget_hold_before' = 'RESERVE'
+     and metadata_json ->> 'budget_hold_after' = 'COMMIT'),
+  1, 'audit บันทึกว่าการออกใบสั่งซื้อแปลงยอดที่กันไว้เป็นยอดผูกพัน');
+
+select pg_temp.assert_eq(
+  (select count(*)::integer from public.audit_events
+   where action = 'procurement.status_change'
+     and metadata_json ->> 'budget_hold_before' is not null
+     and metadata_json ->> 'budget_hold_after' is null),
   2, 'audit บันทึกว่าการยกเลิกคืนยอด');
 
+/*
+ * หกแถว ไม่ใช่สี่ (PR-04e)
+ *
+ * ใบแรก: กันยอด · คืนยอดตอนออกใบสั่งซื้อ · ผูกพัน · คืนยอดผูกพันตอนยกเลิก = 4
+ * ใบที่สอง: กันยอด · คืนยอดตอนยกเลิก = 2
+ *
+ * ทุกแถวต้องถูกกำกับว่า workflow เป็นผู้ลง เพราะผู้กดปุ่มไม่ได้ถือ budget.manage
+ * ถ้าแถวใดหลุดเครื่องหมายนี้ แปลว่ามีเส้นทางที่ลงรายการงบในนามของผู้ใช้โดยตรง
+ */
 select pg_temp.assert_eq(
   (select count(*)::integer from public.audit_events
    where entity_type = 'budget_movement'
      and metadata_json ->> 'posted_by_workflow' = 'true'),
-  4, 'รายการงบที่ workflow ลงถูกกำกับไว้ใน audit');
+  6, 'รายการงบที่ workflow ลงถูกกำกับไว้ใน audit');
 
 rollback;

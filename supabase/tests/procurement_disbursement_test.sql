@@ -56,7 +56,7 @@ returns numeric language sql as $$ select public.budget_available(p_account); $$
    จึงห่อด้วย security definer ใน pg_temp แทนการเปิดสิทธิ์ให้ของจริง */
 create or replace function pg_temp.outstanding(p_procurement uuid)
 returns numeric language sql security definer as $$
-  select coalesce(sum(outstanding), 0) from public.procurement_outstanding_reserve(p_procurement);
+  select coalesce(sum(outstanding), 0) from public.procurement_outstanding_hold(p_procurement);
 $$;
 
 -- ---------------------------------------------------------------------------
@@ -300,7 +300,7 @@ select pg_temp.assert_eq(
 select pg_temp.assert_fails(
   $$select public.procurement_disburse(
       'dbaaaaaa-0000-4000-8000-000000000001', 1500.01, (pg_temp.d0() + 6))$$,
-  'เบิกจ่ายเกินยอดที่กันไว้ไม่ได้',
+  'เบิกจ่ายเกินยอดที่ถือไว้ไม่ได้',
   'จ่ายเกินยอดที่กันไว้แม้แค่หนึ่งสตางค์ก็ไม่ได้');
 
 -- ---------------------------------------------------------------------------
@@ -327,7 +327,7 @@ select pg_temp.assert_eq(
 select pg_temp.assert_fails(
   $$select public.procurement_disburse(
       'dbaaaaaa-0000-4000-8000-000000000001', 0.01, (pg_temp.d0() + 11))$$,
-  'ไม่มียอดที่กันไว้เหลือ',
+  'ไม่มียอดที่กันไว้หรือผูกพันไว้เหลือ',
   'จ่ายซ้ำหลังจ่ายครบแล้วไม่ได้');
 
 -- ---------------------------------------------------------------------------
@@ -406,14 +406,14 @@ select pg_temp.assert_eq(
 -- ---------------------------------------------------------------------------
 -- ฟังก์ชันช่วยไม่เปิดให้ผู้ใช้ทั่วไปเรียกตรง
 --
--- procurement_outstanding_reserve อ่าน budget_movements ข้าม RLS ได้
+-- procurement_outstanding_hold อ่าน budget_movements ข้าม RLS ได้
 -- การเปิดให้เรียกตรงทำให้สำรวจยอดงบของรายการที่ตัวเองไม่มีสิทธิ์เห็นได้
 -- ---------------------------------------------------------------------------
 
 select pg_temp.assert_eq(
   has_function_privilege('authenticated',
-    'public.procurement_outstanding_reserve(uuid)', 'execute'),
-  false, 'authenticated เรียก procurement_outstanding_reserve ตรงไม่ได้');
+    'public.procurement_outstanding_hold(uuid)', 'execute'),
+  false, 'authenticated เรียก procurement_outstanding_hold ตรงไม่ได้');
 
 select pg_temp.assert_eq(
   has_function_privilege('authenticated',

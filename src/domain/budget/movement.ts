@@ -69,6 +69,21 @@ const DIRECTIONS: Readonly<Record<Exclude<MovementType, 'REVERSAL'>, MovementDir
   ACTUAL: 'DEBIT',
 };
 
+/**
+ * ชนิดที่ "ถือยอดไว้" และจึงคืนยอดด้วย RELEASE ได้
+ *
+ * `RESERVE` คือการกันยอดตอนอนุมัติ ส่วน `COMMIT` คือการผูกพันงบตอนออกใบสั่งซื้อ
+ * ทั้งคู่ทำให้ยอดที่ใช้ได้ลดลงและยังไม่ได้จ่ายเงินออกไปจริง จึงคืนได้เหมือนกัน
+ *
+ * `ACTUAL` ไม่อยู่ในกลุ่มนี้โดยตั้งใจ — เงินที่จ่ายออกไปแล้วคืนด้วย RELEASE ไม่ได้
+ * ต้องย้อนรายการ (REVERSAL) ซึ่งทิ้งร่องรอยว่ามีการจ่ายผิดเกิดขึ้นจริง
+ */
+export const HOLDING_TYPES: readonly MovementType[] = ['RESERVE', 'COMMIT'];
+
+export function isHoldingType(type: MovementType): boolean {
+  return HOLDING_TYPES.includes(type);
+}
+
 export function isMovementType(value: string): value is MovementType {
   return (MOVEMENT_TYPES as readonly string[]).includes(value);
 }
@@ -110,7 +125,7 @@ export class BudgetMovementError extends Error {
     | 'REVERSAL_ALREADY_DONE'
     | 'TRANSFER_PAIR_REQUIRED'
     | 'RELEASE_TARGET_REQUIRED'
-    | 'RELEASE_TARGET_NOT_RESERVE'
+    | 'RELEASE_TARGET_NOT_HOLDING'
     | 'RELEASE_EXCEEDS_RESERVED';
 
   constructor(code: BudgetMovementError['code'], message: string) {
@@ -233,10 +248,10 @@ export function assertMovementShapeValid(
     }
 
     const target = existing.find((row) => row.id === movement.releasesMovementId);
-    if (target && target.type !== 'RESERVE') {
+    if (target && !HOLDING_TYPES.includes(target.type)) {
       throw new BudgetMovementError(
-        'RELEASE_TARGET_NOT_RESERVE',
-        'คืนยอดได้เฉพาะรายการที่เป็นการกันยอดเท่านั้น',
+        'RELEASE_TARGET_NOT_HOLDING',
+        'คืนยอดได้เฉพาะรายการที่ถือยอดไว้ คือการกันยอดหรือการผูกพันงบเท่านั้น',
       );
     }
 

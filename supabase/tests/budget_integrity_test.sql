@@ -211,7 +211,10 @@ select public.budget_post_movement(
   'bbbbbbbb-0000-0000-4000-800000000012', 'RESERVE', 1500.00, '2056-01-15', 'กันยอด'
 );
 
--- คืนยอดให้รายการที่ไม่ใช่การกันยอดไม่ได้
+-- คืนยอดให้รายการที่ไม่ได้ถือยอดไว้ไม่ได้
+--
+-- ตั้งแต่ PR-04e คืนยอดได้ทั้ง RESERVE และ COMMIT แต่ชนิดอื่นยังคืนไม่ได้
+-- TRANSFER_IN คือเงินที่รับโอนเข้ามาแล้ว ไม่ใช่ยอดที่ถูกถือไว้รอใช้
 select pg_temp.assert_fails(
   format($$
     select public.budget_post_movement(
@@ -221,7 +224,8 @@ select pg_temp.assert_fails(
   $$, (select id from public.budget_movements
        where budget_account_id = 'bbbbbbbb-0000-0000-4000-800000000012'
          and movement_type = 'TRANSFER_IN')),
-  'รายการกันยอดของบัญชีงบเดียวกัน', 'คืนยอดให้รายการที่ไม่ใช่การกันยอดไม่ได้');
+  'รายการกันยอดหรือผูกพันงบของบัญชีงบเดียวกัน',
+  'คืนยอดให้รายการที่ไม่ได้ถือยอดไว้ไม่ได้');
 
 -- คืนเกินยอดที่กันไว้ไม่ได้ — ยอดที่คืนเกินจะกลายเป็นงบที่งอกจากรายการที่ไม่มีจริง
 select pg_temp.assert_fails(
