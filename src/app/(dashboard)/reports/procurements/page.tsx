@@ -13,6 +13,8 @@ import {
 import { buildProcurementRegister, REGISTER_FLAG_LABELS_TH } from '@/domain/procurement/register';
 import { RegisterFilters } from '@/features/reports/register-filters';
 import { RegisterTable } from '@/features/reports/register-table';
+import { ExportLinks } from '@/features/reports/export-links';
+import { procurementRegisterExportHref } from '@/features/reports/export-hrefs';
 import { formatSatang } from '@/features/reports/format';
 import { STATUS_LABELS_TH } from '@/features/procurements/format';
 
@@ -26,19 +28,20 @@ export const metadata: Metadata = { title: 'รายงานทะเบีย
  * และมีแถวใดที่กรอกไม่ครบ" ซึ่งเป็นคำถามที่ไฟล์สเปรดชีตเดิมตอบผิดอยู่หลายจุด
  * (F-14 12 แถวไม่มีเลขเอกสาร, F-15 3 แถวไม่มีจำนวนเงิน)
  *
- * ใช้ procurement.read.all ไม่ใช่ reports.export — หน้านี้เป็นการดูบนจอ
- * ไม่ใช่การนำข้อมูลออกนอกระบบ (เหตุผลเดียวกับรายงานงบประมาณ) และไม่ใช้
- * procurement.read.own เพราะ "ทะเบียน" ที่เห็นเฉพาะรายการของตัวเองคือสมุดคุม
- * ที่ไม่ครบเล่ม ผู้อ่านจะสรุปยอดของโรงเรียนจากมันโดยไม่รู้ว่ายังขาดอะไรอยู่
+ * ใช้ procurement.read.all ไม่ใช่ procurement.read.own สำหรับการดูบนจอ เพราะ
+ * "ทะเบียน" ที่เห็นเฉพาะรายการของตัวเองคือสมุดคุมที่ไม่ครบเล่ม ผู้อ่านจะสรุป
+ * ยอดของโรงเรียนจากมันโดยไม่รู้ว่ายังขาดอะไรอยู่ — ส่วนการส่งออกเป็นไฟล์ต้องมี
+ * reports.export เพิ่มอีกสิทธิ์หนึ่ง (ดู src/app/(dashboard)/reports/procurements/export/route.ts)
+ * เพราะการดูบนจอกับการนำข้อมูลออกนอกระบบเป็นคนละเรื่องกัน
  *
- * **อ่านอย่างเดียว** ไม่มี mutation ใด ๆ และยังไม่มีการส่งออกเป็นไฟล์
+ * **อ่านอย่างเดียว** ไม่มี mutation ใด ๆ
  */
 export default async function ProcurementRegisterPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requirePermissionForPage('/reports/procurements', 'procurement.read.all');
+  const user = await requirePermissionForPage('/reports/procurements', 'procurement.read.all');
 
   const filter = parseProcurementRegisterFilter(await searchParams);
   const [result, fiscalYears] = await Promise.all([
@@ -178,10 +181,23 @@ export default async function ProcurementRegisterPage({
       )}
 
       {/*
-        ยังไม่มีปุ่มส่งออกไฟล์ในรอบนี้ ด้วยเหตุผลเดียวกับรายงานงบประมาณ
-        กติกา export ของ PR-09 กำหนดไว้หลายข้อที่ต้องทำให้ครบพร้อมกัน
-        (typed date ใน XLSX, print area, export log, การปิดบังข้อมูลตามบทบาท)
+        ซ่อนปุ่มส่งออกเมื่อข้อมูลถูกตัดด้วย — Route Handler ปฏิเสธคำขอส่งออก
+        ในกรณีนี้อยู่แล้ว (ดูคอมเมนต์ที่ export/route.ts) ปุ่มที่กดแล้วได้ error
+        เสมอไม่มีประโยชน์อะไร แค่ทำให้ผู้ใช้ต้องลองกดก่อนถึงจะรู้
       */}
+      {user.permissions.has('reports.export') && !result.truncated ? (
+        <ExportLinks
+          groups={[
+            {
+              label: 'ทะเบียนจัดซื้อจัดจ้าง',
+              links: [
+                { label: 'XLSX', href: procurementRegisterExportHref(filter, 'xlsx') },
+                { label: 'CSV', href: procurementRegisterExportHref(filter, 'csv') },
+              ],
+            },
+          ]}
+        />
+      ) : null}
     </div>
   );
 }
