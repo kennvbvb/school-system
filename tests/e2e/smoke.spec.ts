@@ -165,3 +165,19 @@ test('ตัวกรองในทะเบียนไม่ทำให้�
   );
   await expect(page).toHaveURL(/\/login\?returnTo=/);
 });
+
+test('หน้ารายงานสถานะเอกสารถูกกันไว้และจำปลายทางเดิม', async ({ page }) => {
+  /*
+   * รายงานนี้เปิดโครงสร้างเลขที่เอกสารทั้งโรงเรียน รวมถึงช่วงที่ขาดและเลขที่ซ้ำ
+   * ซึ่งเป็นข้อมูลที่ผู้ไม่หวังดีใช้ปลอมเอกสารได้ดีที่สุด จึงต้องกันไว้ก่อนเข้าสู่ระบบเสมอ
+   */
+  await page.goto('/reports/documents');
+  await expect(page).toHaveURL(/\/login\?returnTo=%2Freports%2Fdocuments$/);
+});
+
+test('ตัวกรองในรายงานสถานะเอกสารไม่ทำให้หน้าล้มก่อนตรวจสิทธิ์', async ({ page }) => {
+  await page.goto(
+    '/reports/documents?fiscalYearId=ไม่ใช่uuid&documentKind=xxx&exceptionStatus=ISSUED',
+  );
+  await expect(page).toHaveURL(/\/login\?returnTo=/);
+});

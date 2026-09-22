@@ -10,6 +10,11 @@ import type {
 } from '@/domain/procurement/schemas';
 import type { DocumentNumberStatus, ProcurementRegisterRow } from '@/domain/procurement/register';
 import type { ProcurementRegisterFilter } from '@/domain/procurement/register-schemas';
+/* DocumentNumberStatus ไม่ได้ import ที่นี่ เพราะ register.ts ส่งต่อชนิดเดียวกันมาแล้ว
+   ด้านบน — เป็น enum เดียวกันในฐานข้อมูล ไม่ใช่สองชนิดที่บังเอิญหน้าตาเหมือนกัน */
+import type { DocumentKind } from '@/domain/documents/document-register';
+import type { DocumentExceptionRow, DocumentSequenceRow } from '@/domain/documents/sequence-report';
+import type { DocumentStatusFilter } from '@/domain/documents/sequence-report-schemas';
 
 /**
  * การอ่านข้อมูลสำหรับรายงานงบประมาณ
@@ -210,6 +215,125 @@ export async function loadProcurementRegister(
       purchaseOrderStatus: row.purchase_order_status,
       grandTotalSatang: toSatang(row.grand_total),
       fundingTotalSatang: toSatang(row.funding_total),
+    })),
+  };
+}
+
+// -----------------------------------------------------------------------------
+// รายงานสถานะเอกสาร (PR-09c)
+// -----------------------------------------------------------------------------
+
+/**
+ * เพดานจำนวนแถวของรายการยกเว้น
+ *
+ * ต่างจากทะเบียนจัดซื้อจัดจ้างตรงที่ **ไม่ต้องซ่อนยอดรวมเมื่อถูกตัด** เพราะ
+ * ยอดรวมของรายงานนี้มาจาก document_sequence_rows() ซึ่งนับที่ฐานข้อมูลจากทุกแถว
+ * ไม่ได้นับจากรายการที่ส่งมาแสดง การตัดรายการยกเว้นจึงตัดแค่รายละเอียด
+ * ไม่ได้ทำให้ตัวเลขสรุปผิด
+ */
+export const DOCUMENT_EXCEPTION_LIMIT = 500;
+
+interface SequenceDbRow {
+  fiscal_year_id: string;
+  fiscal_year_code: string | null;
+  document_kind: DocumentKind;
+  issued_count: number;
+  voided_count: number;
+  pending_count: number;
+  not_required_count: number;
+  min_running: number | null;
+  max_running: number | null;
+  used_running_count: number;
+  missing_count: number;
+  missing_sample: number[] | null;
+  duplicate_running: number[] | null;
+  unparsed_count: number;
+}
+
+export async function loadDocumentSequenceRows(
+  filter: DocumentStatusFilter,
+): Promise<DocumentSequenceRow[]> {
+  const supabase = await createSupabaseServerClient();
+
+  const { data, error } = await supabase.rpc('document_sequence_rows', {
+    p_fiscal_year_id: filter.fiscalYearId ?? null,
+    p_document_kind: filter.documentKind ?? null,
+  });
+
+  if (error) throw new Error(error.message);
+
+  return ((data ?? []) as SequenceDbRow[]).map((row) => ({
+    fiscalYearId: row.fiscal_year_id,
+    fiscalYearCode: row.fiscal_year_code,
+    documentKind: row.document_kind,
+    issuedCount: row.issued_count,
+    voidedCount: row.voided_count,
+    pendingCount: row.pending_count,
+    notRequiredCount: row.not_required_count,
+    minRunning: row.min_running,
+    maxRunning: row.max_running,
+    usedRunningCount: row.used_running_count,
+    missingCount: row.missing_count,
+    /* อาร์เรย์ที่ว่างอาจมาเป็น null ได้เมื่อ driver แปลงให้ — ทั้งสองแบบแปลว่า
+       "ไม่มีตัวอย่างให้แสดง" ซึ่งไม่เท่ากับ "ไม่มีเลขขาด" (ดู missingCount) */
+    missingSample: row.missing_sample ?? [],
+    duplicateRunning: row.duplicate_running ?? [],
+    unparsedCount: row.unparsed_count,
+  }));
+}
+
+interface ExceptionDbRow {
+  document_number_id: string;
+  fiscal_year_code: string | null;
+  document_kind: DocumentKind;
+  status: DocumentNumberStatus;
+  document_no: string | null;
+  running_no: number | null;
+  reason: string | null;
+  procurement_id: string;
+  procurement_reference: string | null;
+  procurement_subject: string | null;
+  created_at: string;
+  voided_at: string | null;
+}
+
+export interface DocumentExceptionResult {
+  rows: DocumentExceptionRow[];
+  /** true = ยังมีข้อยกเว้นอีก แต่เกินเพดานจึงไม่ได้ถูกดึงมา */
+  truncated: boolean;
+}
+
+export async function loadDocumentExceptions(
+  filter: DocumentStatusFilter,
+): Promise<DocumentExceptionResult> {
+  const supabase = await createSupabaseServerClient();
+
+  const { data, error } = await supabase.rpc('document_number_exceptions', {
+    p_fiscal_year_id: filter.fiscalYearId ?? null,
+    p_document_kind: filter.documentKind ?? null,
+    p_status: filter.exceptionStatus ?? null,
+    p_limit: DOCUMENT_EXCEPTION_LIMIT + 1,
+  });
+
+  if (error) throw new Error(error.message);
+
+  const dbRows = (data ?? []) as ExceptionDbRow[];
+
+  return {
+    truncated: dbRows.length > DOCUMENT_EXCEPTION_LIMIT,
+    rows: dbRows.slice(0, DOCUMENT_EXCEPTION_LIMIT).map((row) => ({
+      documentNumberId: row.document_number_id,
+      fiscalYearCode: row.fiscal_year_code,
+      documentKind: row.document_kind,
+      status: row.status,
+      documentNo: row.document_no,
+      runningNo: row.running_no,
+      reason: row.reason,
+      procurementId: row.procurement_id,
+      procurementReference: row.procurement_reference,
+      procurementSubject: row.procurement_subject,
+      createdAt: row.created_at,
+      voidedAt: row.voided_at,
     })),
   };
 }

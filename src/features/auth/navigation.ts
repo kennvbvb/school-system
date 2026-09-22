@@ -87,6 +87,14 @@ export const NAV_SECTIONS: readonly NavSection[] = [
         labelTh: 'ทะเบียนจัดซื้อจัดจ้าง',
         anyOf: ['procurement.read.all'],
       },
+      /* เพิ่ม documents.issue เข้ามาด้วย เพราะผู้ที่ออกเลขคือคนที่ต้องเห็นว่า
+         เลขกระโดดหรือซ้ำตรงไหน และ RLS ให้เขาเห็นทะเบียนเลขทั้งเล่มอยู่แล้ว
+         (policy document_numbers_select_register) */
+      {
+        href: '/reports/documents',
+        labelTh: 'สถานะเอกสาร',
+        anyOf: ['documents.issue', 'procurement.read.all'],
+      },
     ],
   },
   {

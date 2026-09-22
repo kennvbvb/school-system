@@ -156,6 +156,11 @@ jobs:
         # view procurement_totals ทุกแถว
         run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/procurement_register_test.sql
 
+      - name: ทดสอบรายงานสถานะเอกสารบนฐานข้อมูลจริง
+        # เลขที่ยกเลิกแล้วและเลขของรายการที่ถูกลบต้องไม่นับเป็นช่องว่าง
+        # และช่วงเลขที่กว้างผิดปกติต้องไม่ทำให้ query ระเบิด
+        run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/document_status_test.sql
+
   e2e:
     name: End-to-end smoke tests
     runs-on: ubuntu-latest
