@@ -15,11 +15,14 @@ import { buildCsvText, resolveDataset } from '@/domain/reports/export';
 import { buildXlsxBuffer } from '@/server/reports/export-file';
 import { sha256Hex } from '@/lib/checksum';
 import { recordAuditEvent } from '@/server/audit/audit-log';
+import { checkExportRateLimit } from '@/server/reports/export-rate-limit';
 import {
+  auditFailedResponse,
   authorizationErrorResponse,
   badRequestResponse,
   fileResponse,
   parseExportFormat,
+  rateLimitedResponse,
   truncatedResponse,
 } from '@/server/reports/export-http';
 
@@ -60,6 +63,9 @@ export async function GET(request: NextRequest): Promise<Response> {
     }
     actorId = user.id;
 
+    const rateLimit = checkExportRateLimit(`${REPORT_KEY}:${actorId}`);
+    if (!rateLimit.allowed) return rateLimitedResponse(rateLimit.retryAfterSeconds);
+
     const format = parseExportFormat(request.nextUrl.searchParams);
     if (format === null) {
       return badRequestResponse('รูปแบบไฟล์ต้องเป็น xlsx หรือ csv เท่านั้น');
@@ -74,12 +80,24 @@ export async function GET(request: NextRequest): Promise<Response> {
       Object.fromEntries(request.nextUrl.searchParams.entries()),
     );
 
+    /*
+     * XLSX รวมทั้งสองตารางในไฟล์เดียวเสมอ จึงต้องโหลดและตรวจ truncation ของ
+     * ทั้งคู่ — แต่ CSV มีตารางเดียวต่อไฟล์ตามที่ผู้ใช้เลือก (`dataset=sequence`
+     * หรือ `exceptions`) การตัดของอีก dataset ที่ไม่ได้ถูกส่งออกเลยไม่ควรบล็อก
+     * การส่งออก CSV ของอีกฝั่ง (เช่น เลือกส่งออกเฉพาะ sequence ซึ่งไม่มีเพดาน
+     * แถวเลย ไม่ควรถูกปฏิเสธเพราะ exceptions เกิน DOCUMENT_EXCEPTION_LIMIT)
+     */
+    const needsSequence = format === 'xlsx' || datasetChoice === 'sequence';
+    const needsExceptions = format === 'xlsx' || datasetChoice === 'exceptions';
+
     const [sequenceRows, exceptions] = await Promise.all([
-      loadDocumentSequenceRows(filter),
-      loadDocumentExceptions(filter),
+      needsSequence ? loadDocumentSequenceRows(filter) : Promise.resolve([]),
+      needsExceptions
+        ? loadDocumentExceptions(filter)
+        : Promise.resolve({ rows: [], truncated: false }),
     ]);
 
-    if (exceptions.truncated) {
+    if (needsExceptions && exceptions.truncated) {
       return truncatedResponse(
         `มีเอกสารที่ไม่ได้อยู่ในสถานะออกเลขแล้วเกิน ${DOCUMENT_EXCEPTION_LIMIT.toLocaleString('th-TH')} ฉบับ ` +
           'ตามเงื่อนไขที่เลือก จึงไม่ส่งออกไฟล์ที่ไม่ครบ กรุณาเลือกปีงบประมาณหรือชนิดเอกสารให้แคบลงแล้วลองใหม่',
@@ -103,7 +121,7 @@ export async function GET(request: NextRequest): Promise<Response> {
 
     const checksum = sha256Hex(buffer);
 
-    await recordAuditEvent({
+    const auditResult = await recordAuditEvent({
       action: 'report.export',
       entityType: 'report_export',
       entityId: REPORT_KEY,
@@ -118,6 +136,7 @@ export async function GET(request: NextRequest): Promise<Response> {
         checksum,
       },
     });
+    if (!auditResult.ok) return auditFailedResponse();
 
     return fileResponse(buffer, format, REPORT_KEY);
   } catch (error) {

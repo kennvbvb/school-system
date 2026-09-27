@@ -7,6 +7,7 @@ import {
   percentText,
   resolveDataset,
   sanitizeSheetName,
+  sanitizeSpreadsheetText,
   xlsxCellValue,
   buildCsvText,
 } from '@/domain/reports/export';
@@ -109,6 +110,11 @@ describe('xlsxCellValue', () => {
     expect(xlsxCellValue('text', 'สวัสดี')).toBe('สวัสดี');
   });
 
+  it('text: ไม่ sanitize ข้อความที่ขึ้นต้นด้วยอักขระสูตร (exceljs เขียนเป็น shared string เสมอ ไม่ใช่สูตร)', () => {
+    expect(xlsxCellValue('text', '=1+1')).toBe('=1+1');
+    expect(xlsxCellValue('text', '+66812345678')).toBe('+66812345678');
+  });
+
   it('ทุกชนิดคืน null เมื่อค่าดิบเป็น null', () => {
     for (const type of ['date', 'datetime', 'integer', 'money', 'percent', 'text'] as const) {
       expect(xlsxCellValue(type, null)).toBeNull();
@@ -121,6 +127,12 @@ describe('csvCellText', () => {
     expect(csvCellText('date', '2026-09-15')).toBe('2026-09-15');
     expect(csvCellText('datetime', '2026-09-15T10:23:00.000Z')).toBe('2026-09-15T10:23:00.000Z');
     expect(csvCellText('text', 'สวัสดี')).toBe('สวัสดี');
+  });
+
+  it('text: sanitize ข้อความที่ขึ้นต้นด้วยอักขระสูตร (CSV injection)', () => {
+    expect(csvCellText('text', '=1+1')).toBe("'=1+1");
+    expect(csvCellText('text', '+66812345678')).toBe("'+66812345678");
+    expect(csvCellText('text', '@SUM(1,1)')).toBe("'@SUM(1,1)");
   });
 
   it('integer: แปลง number เป็นข้อความโดยไม่มีตัวคั่นหลักพัน', () => {
@@ -139,6 +151,35 @@ describe('csvCellText', () => {
     for (const type of ['date', 'datetime', 'integer', 'money', 'percent', 'text'] as const) {
       expect(csvCellText(type, null)).toBe('');
     }
+  });
+});
+
+describe('sanitizeSpreadsheetText', () => {
+  it('เติม single quote นำหน้าเมื่อขึ้นต้นด้วยอักขระที่ทำให้ตีความเป็นสูตร', () => {
+    for (const trigger of ['=', '+', '-', '@', '\t', '\r']) {
+      expect(sanitizeSpreadsheetText(`${trigger}เนื้อหา`)).toBe(`'${trigger}เนื้อหา`);
+    }
+  });
+
+  it('เติม single quote นำหน้าเมื่อขึ้นต้นด้วยอักขระเต็มความกว้าง (full-width)', () => {
+    for (const trigger of ['＝', '＋', '－', '＠']) {
+      expect(sanitizeSpreadsheetText(`${trigger}เนื้อหา`)).toBe(`'${trigger}เนื้อหา`);
+    }
+  });
+
+  it('ไม่แตะข้อความปกติที่ไม่ได้ขึ้นต้นด้วยอักขระสูตร', () => {
+    expect(sanitizeSpreadsheetText('จัดซื้อครุภัณฑ์คอมพิวเตอร์')).toBe(
+      'จัดซื้อครุภัณฑ์คอมพิวเตอร์',
+    );
+    expect(sanitizeSpreadsheetText('ราคา 1,234.56 บาท')).toBe('ราคา 1,234.56 บาท');
+  });
+
+  it('ไม่แตะข้อความว่าง', () => {
+    expect(sanitizeSpreadsheetText('')).toBe('');
+  });
+
+  it('ตรวจเฉพาะอักขระตัวแรกเท่านั้น ไม่ตรวจอักขระที่ปนอยู่กลางข้อความ', () => {
+    expect(sanitizeSpreadsheetText('จัดซื้อ=1+1')).toBe('จัดซื้อ=1+1');
   });
 });
 
@@ -230,5 +271,28 @@ describe('buildCsvText', () => {
     );
     const withoutBom = csv.slice(1);
     expect(withoutBom).toBe('รหัส,จำนวนเงิน,จำนวน\r\n');
+  });
+
+  it('ป้องกัน CSV formula injection: คอลัมน์ text ที่เป็นสูตรถูกเติม single quote ก่อน escape ตาม RFC 4180', () => {
+    const dataset: ExportDataset<{ subject: string }> = {
+      title: 'ตัวอย่าง',
+      columns: [{ key: 'subject', header: 'เรื่อง', type: 'text', value: (row) => row.subject }],
+      rows: [
+        // payload คลาสสิกของ CSV injection — ไม่มีจุลภาค/เครื่องหมายคำพูดคู่
+        // จึงไม่ถูก RFC 4180 wrap เพิ่ม เห็นผลของ sanitizeSpreadsheetText ล้วน ๆ
+        { subject: "=cmd|'/ccalc'!A1" },
+        // มีทั้งอักขระสูตรนำหน้าและจุลภาคที่ต้อง escape ตาม RFC 4180 พร้อมกัน
+        { subject: '+66,1234' },
+      ],
+    };
+
+    const csv = buildCsvText(resolveDataset(dataset));
+    const lines = csv
+      .slice(1)
+      .split('\r\n')
+      .filter((line) => line.length > 0);
+
+    expect(lines[1]).toBe("'=cmd|'/ccalc'!A1");
+    expect(lines[2]).toBe('"\'+66,1234"');
   });
 });

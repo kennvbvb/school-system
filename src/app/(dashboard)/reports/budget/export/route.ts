@@ -9,11 +9,14 @@ import { buildCsvText, resolveDataset } from '@/domain/reports/export';
 import { buildXlsxBuffer } from '@/server/reports/export-file';
 import { sha256Hex } from '@/lib/checksum';
 import { recordAuditEvent } from '@/server/audit/audit-log';
+import { checkExportRateLimit } from '@/server/reports/export-rate-limit';
 import {
+  auditFailedResponse,
   authorizationErrorResponse,
   badRequestResponse,
   fileResponse,
   parseExportFormat,
+  rateLimitedResponse,
 } from '@/server/reports/export-http';
 
 /**
@@ -41,6 +44,9 @@ export async function GET(request: NextRequest): Promise<Response> {
     }
     actorId = user.id;
 
+    const rateLimit = checkExportRateLimit(`${REPORT_KEY}:${actorId}`);
+    if (!rateLimit.allowed) return rateLimitedResponse(rateLimit.retryAfterSeconds);
+
     const format = parseExportFormat(request.nextUrl.searchParams);
     if (format === null) {
       return badRequestResponse('รูปแบบไฟล์ต้องเป็น xlsx หรือ csv เท่านั้น');
@@ -60,7 +66,7 @@ export async function GET(request: NextRequest): Promise<Response> {
 
     const checksum = sha256Hex(buffer);
 
-    await recordAuditEvent({
+    const auditResult = await recordAuditEvent({
       action: 'report.export',
       entityType: 'report_export',
       entityId: REPORT_KEY,
@@ -74,6 +80,7 @@ export async function GET(request: NextRequest): Promise<Response> {
         checksum,
       },
     });
+    if (!auditResult.ok) return auditFailedResponse();
 
     return fileResponse(buffer, format, REPORT_KEY);
   } catch (error) {

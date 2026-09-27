@@ -135,6 +135,21 @@ export async function loadFiscalYearOptions(): Promise<FiscalYearOption[]> {
  */
 export const REGISTER_ROW_LIMIT = 1000;
 
+/**
+ * เพดานแถวเมื่อส่งออกเป็นไฟล์ — สูงกว่าเพดานหน้าจอ (REGISTER_ROW_LIMIT) เพราะ
+ * การส่งออกทะเบียนไม่มีแถวยอดรวมสังเคราะห์ให้ต้องกังวลเรื่องยอดไม่ตรงกับแถว
+ * ที่ถูกตัด (ดู src/features/reports/export-columns.ts) จึงไม่ต้องใช้เพดาน
+ * เดียวกับหน้าจอที่ต้องซ่อนยอดรวมเมื่อข้อมูลถูกตัด
+ *
+ * ตั้งไว้เท่ากับเพดานสูงสุดที่ตัว SQL function เองยอมรับจริง (ดู
+ * `least(greatest(coalesce(p_limit, 1000), 1), 5000)` ใน migration
+ * 20260920000100_procurement_register.sql) — ส่งค่าที่สูงกว่านี้ไปก็ไม่มีผล
+ * เพราะฐานข้อมูลจะ clamp ให้เองอยู่ดี ถ้าโรงเรียนมีทะเบียนต่อปีงบเกิน 5,000
+ * รายการจริง ต้องทำ keyset pagination/streaming เพิ่มซึ่งยังไม่ได้ทำในรอบนี้
+ * (ดู docs/assumptions.md)
+ */
+export const REGISTER_EXPORT_ROW_LIMIT = 5000;
+
 interface RegisterDbRow {
   procurement_id: string;
   reference: string;
@@ -176,6 +191,9 @@ export interface ProcurementRegisterResult {
  */
 export async function loadProcurementRegister(
   filter: ProcurementRegisterFilter,
+  /** เพดานแถว — ค่าเริ่มต้นคือเพดานหน้าจอ ผู้เรียกฝั่งส่งออกไฟล์ส่ง
+   * REGISTER_EXPORT_ROW_LIMIT เข้ามาแทนเพื่อขอแถวได้มากกว่าที่หน้าจอรับไหว */
+  rowLimit: number = REGISTER_ROW_LIMIT,
 ): Promise<ProcurementRegisterResult> {
   const supabase = await createSupabaseServerClient();
 
@@ -185,17 +203,17 @@ export async function loadProcurementRegister(
     p_status: filter.status ?? null,
     p_date_from: filter.dateFrom ?? null,
     p_date_to: filter.dateTo ?? null,
-    p_limit: REGISTER_ROW_LIMIT + 1,
+    p_limit: rowLimit + 1,
   });
 
   if (error) throw new Error(error.message);
 
   const dbRows = (data ?? []) as RegisterDbRow[];
-  const truncated = dbRows.length > REGISTER_ROW_LIMIT;
+  const truncated = dbRows.length > rowLimit;
 
   return {
     truncated,
-    rows: dbRows.slice(0, REGISTER_ROW_LIMIT).map((row) => ({
+    rows: dbRows.slice(0, rowLimit).map((row) => ({
       procurementId: row.procurement_id,
       reference: row.reference,
       subject: row.subject,

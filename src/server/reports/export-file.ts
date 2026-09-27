@@ -1,4 +1,3 @@
-import 'server-only';
 import ExcelJS from 'exceljs';
 import type { ExportColumnType, ResolvedExportDataset } from '@/domain/reports/export';
 import {
@@ -17,11 +16,23 @@ import {
  * คำนวณไว้แล้ว ตรรกะที่มีรายละเอียดมากกว่านี้ (การแปลงชนิดข้อมูล การปัดเศษ
  * เปอร์เซ็นต์ การ escape ข้อความ) อยู่ในสองไฟล์นั้นซึ่งทดสอบตรงได้ด้วย vitest
  *
- * ไฟล์นี้ทดสอบตรงด้วย vitest ไม่ได้ เพราะ `import 'server-only'` throw ทันที
- * เมื่อรันนอก build ของ Next.js (แพ็กเกจนี้ throw โดยไม่มีเงื่อนไข ปกติแล้ว
- * Next.js สลับให้เป็น no-op ตอน build ฝั่งเซิร์ฟเวอร์เท่านั้น) — ตรวจสอบ API
- * ของ exceljs ที่ใช้ในนี้ (freeze pane, page setup, autoFilter, typed date
- * round-trip) ด้วยสคริปต์ทดลองนอกชุด test แล้วแทน ดูรายละเอียดใน PR body
+ * **ตั้งใจไม่ใส่ `import 'server-only'` ที่นี่** ต่างจากไฟล์ server-only อื่น
+ * ในระบบ — เพราะ package `server-only` throw ทันทีเมื่อถูก import นอก build
+ * ของ Next.js โดยไม่มีเงื่อนไข ทำให้ vitest import ไฟล์นี้ตรงไม่ได้เลย ซึ่งเคย
+ * เป็นข้อจำกัดของรอบ PR-09d ก่อนหน้า (มีแต่สคริปต์ทดลองที่ไม่ได้ commit)
+ *
+ * exceljs เป็นไลบรารี Node ล้วน ไม่มี dependency บน Next.js request context
+ * ใด ๆ (ไม่เหมือน src/server/audit/audit-log.ts ที่ต้องใช้ next/headers) และ
+ * ไฟล์นี้ถูกเรียกใช้จากที่เดียวคือ src/app/(dashboard)/reports/*\/export/route.ts
+ * (Route Handler ซึ่งรันฝั่งเซิร์ฟเวอร์เสมอ) การไม่มี `server-only` ที่นี่จึง
+ * ไม่เปิดช่องให้โค้ดนี้หลุดไปอยู่ใน client bundle โดยไม่มีใครสังเกตเห็น — ถ้ามี
+ * ใครพยายาม import จาก client component จริง จะพังตอน build อยู่ดีเพราะ
+ * exceljs ใช้ Node core module (`buffer`, `stream`) ที่ไม่มีใน browser bundle
+ *
+ * แลกกับความเสี่ยงเล็กน้อยนี้ ได้ tests/integration/xlsx-export.test.ts ที่
+ * import buildXlsxBuffer() ตรง ๆ แล้วเปิดไฟล์กลับด้วย exceljs เองเพื่อ assert
+ * ชนิดเซลล์ numFmt freeze pane และ page setup จริง — ปิดช่องว่างที่ PR-09d
+ * เดิมยอมรับไว้ว่า "702 tests ไม่ได้พิสูจน์ว่า workbook มีคุณสมบัติตามที่อ้าง"
  */
 
 const HEADER_FILL: ExcelJS.Fill = {

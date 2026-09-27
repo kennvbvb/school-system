@@ -68,7 +68,12 @@ function hashIp(ip: string | null): string | null {
   return createHash('sha256').update(ip).digest('hex').slice(0, 32);
 }
 
-export async function recordAuditEvent(input: AuditEventInput): Promise<void> {
+export interface RecordAuditEventResult {
+  /** false = insert ล้มเหลว — ผู้เรียกที่ต้อง fail closed (เช่น export) ต้องตรวจค่านี้ */
+  ok: boolean;
+}
+
+export async function recordAuditEvent(input: AuditEventInput): Promise<RecordAuditEventResult> {
   const headerList = await headers();
   const requestId = sanitizeRequestId(headerList.get(REQUEST_ID_HEADER)) ?? generateRequestId();
   const forwardedFor = headerList.get('x-forwarded-for');
@@ -90,13 +95,22 @@ export async function recordAuditEvent(input: AuditEventInput): Promise<void> {
   });
 
   if (error) {
-    // audit ที่เขียนไม่ลงคือปัญหาด้านการกำกับดูแล ต้องเห็นใน error monitoring
-    // แต่ไม่ควรทำให้การกระทำที่สำเร็จแล้วของผู้ใช้ล้มตาม จึงบันทึกไว้แล้วปล่อยผ่าน
+    /*
+     * audit ที่เขียนไม่ลงคือปัญหาด้านการกำกับดูแล ต้องเห็นใน error monitoring
+     * ผู้เรียกส่วนใหญ่ (การสร้าง/แก้ไข/อนุมัติต่าง ๆ) ไม่ควรทำให้การกระทำที่
+     * สำเร็จแล้วของผู้ใช้ล้มตาม จึงยังคง log แล้วคืนค่าว่าไม่สำเร็จแทนการ throw —
+     * แต่ผู้เรียกที่ policy บังคับว่าต้องมี audit เสมอ (เช่นการส่งออกไฟล์ข้อมูล
+     * ออกนอกระบบใน src/app/(dashboard)/reports/*\/export/route.ts) ต้องตรวจ
+     * ค่า ok ที่คืนแล้ว fail closed เอง — ปฏิเสธการกระทำแทนที่จะปล่อยผ่านเงียบ ๆ
+     */
     console.error('[audit] บันทึก audit event ไม่สำเร็จ', {
       requestId,
       action: input.action,
       entityType: input.entityType,
       message: error.message,
     });
+    return { ok: false };
   }
+
+  return { ok: true };
 }

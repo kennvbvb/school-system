@@ -151,6 +151,15 @@ export function percentText(basisPoints: number | null): string {
  * ที่อื่นในระบบใช้แปลงข้อความวันที่ 'YYYY-MM-DD' เป็น Date เสมอ (กันวันเลื่อน
  * จาก timezone ของเครื่องที่รัน) — exceljs แปลง Date เป็นเลขลำดับวันของ Excel
  * จากค่า UTC ของ Date เช่นกัน จึงได้วันปฏิทินเดียวกันไม่ว่าจะเปิดที่โซนเวลาใด
+ *
+ * ชนิด 'text' ที่นี่ **ไม่** ผ่าน sanitizeSpreadsheetText() เหมือน csvCellText()
+ * — ตรวจสอบด้วยสคริปต์แยก (เขียน string ที่ขึ้นต้นด้วย '=', '+', '@' ผ่าน
+ * exceljs แล้วแกะไฟล์ผลลัพธ์ดู xl/sharedStrings.xml) ว่า exceljs เขียนเซลล์
+ * ข้อความเป็น shared string ชนิด `t="s"` เสมอ ไม่ใช่ชนิดสูตร (`t="str"`/cell
+ * ที่มี `<f>`) การประมวลผลเป็นสูตรของ Excel เกิดกับชนิดเซลล์สูตรเท่านั้น จึง
+ * ไม่เกิด CSV-injection-style ปัญหากับ XLSX ที่เขียนด้วยวิธีนี้ — การเติม `'`
+ * นำหน้าที่นี่แทนจะกลายเป็นบั๊ก เพราะเมื่อ set ผ่าน API ตรง ๆ (ไม่ใช่การพิมพ์ใน
+ * Excel) เครื่องหมาย `'` จะแสดงเป็นตัวอักษรจริงในเซลล์ ไม่ได้ถูกซ่อนแบบตอนพิมพ์
  */
 export function xlsxCellValue(
   type: ExportColumnType,
@@ -188,14 +197,43 @@ export function isNumericColumnType(type: ExportColumnType): boolean {
   return type === 'integer' || type === 'money' || type === 'percent';
 }
 
+/**
+ * อักขระที่ต้นเซลล์ CSV ทำให้ Excel/LibreOffice/Google Sheets ตีความเนื้อหาเป็นสูตร
+ * แทนข้อความ (CSV injection) — รวมรูปแบบเต็มความกว้าง (full-width) ที่ตัว escape
+ * ปกติมองข้าม เพราะเป็นอักขระคนละตัวกับ '=' ปกติในทาง Unicode แต่ผู้ใช้แยกไม่ออก
+ *
+ * อ้างอิง OWASP CSV Injection: https://owasp.org/www-community/attacks/CSV_Injection
+ */
+const FORMULA_TRIGGER_CHARS = new Set(['=', '+', '-', '@', '\t', '\r', '＝', '＋', '－', '＠']);
+
+/**
+ * ป้องกัน CSV formula injection สำหรับข้อความอิสระที่ผู้ใช้กรอกเอง (เช่น เรื่อง
+ * จัดซื้อ ชื่อผู้ขาย เหตุผลยกเลิก) — ถ้าขึ้นต้นด้วยอักขระที่ทำให้ตีความเป็นสูตร
+ * ให้เติม `'` (single quote) นำหน้า ซึ่งเป็นวิธีมาตรฐานที่ทำให้ spreadsheet
+ * แสดงเป็นข้อความล้วนแทนการประมวลผลเป็นสูตร โดยไม่ทำให้ข้อความปกติเปลี่ยนไป
+ * (เครื่องหมาย `'` ที่เติมจะไม่แสดงผลเมื่อเปิดไฟล์ เพราะ Excel/LibreOffice/
+ * Google Sheets ตีความ apostrophe นำหน้าเป็นตัวบ่งชี้ "บังคับข้อความ" เสมอ
+ * ไม่ว่าจะพิมพ์เองหรือมาจากไฟล์ CSV ที่นำเข้า)
+ *
+ * ใช้เฉพาะ CSV เท่านั้น — ดูเหตุผลที่ XLSX ไม่ต้องใช้ฟังก์ชันนี้ที่คอมเมนต์ของ
+ * xlsxCellValue() ด้านบน (ตรวจสอบแล้วว่า exceljs เขียนเซลล์ข้อความเป็น shared
+ * string ชนิด `t="s"` เสมอ ไม่ใช่ชนิดสูตร จึงไม่ถูกประมวลผลเป็นสูตรไม่ว่าเนื้อหา
+ * จะขึ้นต้นด้วยอะไรก็ตาม)
+ */
+export function sanitizeSpreadsheetText(value: string): string {
+  const first = value.charAt(0);
+  return FORMULA_TRIGGER_CHARS.has(first) ? `'${value}` : value;
+}
+
 /** ค่าที่จะใส่ในเซลล์ CSV — ข้อความล้วนเสมอ เพราะ CSV ไม่มีชนิดเซลล์ */
 export function csvCellText(type: ExportColumnType, raw: ExportRawValue): string {
   if (raw === null) return '';
 
   switch (type) {
     case 'date':
-    case 'text':
       return raw as string;
+    case 'text':
+      return sanitizeSpreadsheetText(raw as string);
     case 'datetime':
       return raw as string;
     case 'integer':

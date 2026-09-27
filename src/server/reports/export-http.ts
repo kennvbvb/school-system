@@ -42,6 +42,30 @@ export function truncatedResponse(message: string): NextResponse {
   return NextResponse.json({ error: message }, { status: 422 });
 }
 
+/** ถูกจำกัดอัตราการเรียก — ดูข้อจำกัดของตัวจำกัดที่ src/server/reports/export-rate-limit.ts */
+export function rateLimitedResponse(retryAfterSeconds: number): NextResponse {
+  return NextResponse.json(
+    { error: 'เรียกส่งออกรายงานถี่เกินไป กรุณารอสักครู่แล้วลองใหม่' },
+    { status: 429, headers: { 'Retry-After': String(retryAfterSeconds) } },
+  );
+}
+
+/**
+ * บันทึก audit event ไม่สำเร็จ — fail closed แทนที่จะส่งไฟล์โดยไม่มีหลักฐานว่า
+ * ใครนำข้อมูลออกไปเมื่อไหร่ (ต่างจาก mutation ทั่วไปในระบบที่ยอมให้ action สำเร็จ
+ * ต่อได้แม้ audit ไม่ลง เพราะการส่งออกคือการนำข้อมูลออกนอกระบบโดยตรง — ไม่มี
+ * ทางตรวจสอบย้อนหลังได้เลยถ้าไม่มี audit event ตรงกับไฟล์ที่ถูกส่งไป)
+ */
+export function auditFailedResponse(): NextResponse {
+  return NextResponse.json(
+    {
+      error:
+        'บันทึกประวัติการส่งออกไม่สำเร็จ จึงไม่สามารถส่งออกไฟล์ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง',
+    },
+    { status: 500 },
+  );
+}
+
 function timestampForFilename(): string {
   // 'YYYYMMDDTHHmmssZ' — ปลอดภัยกับทุกระบบไฟล์ ไม่มีเครื่องหมาย ':' หรือช่องว่าง
   return new Date()
