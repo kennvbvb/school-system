@@ -14,6 +14,8 @@ import {
 import { DocumentStatusFilters } from '@/features/reports/document-status-filters';
 import { DocumentSequenceTable } from '@/features/reports/document-sequence-table';
 import { DocumentExceptionList } from '@/features/reports/document-exception-list';
+import { ExportLinks } from '@/features/reports/export-links';
+import { documentStatusExportHref } from '@/features/reports/export-hrefs';
 import { DOCUMENT_KIND_LABELS_TH } from '@/features/documents/format';
 
 export const metadata: Metadata = { title: 'รายงานสถานะเอกสาร' };
@@ -36,7 +38,7 @@ export default async function DocumentStatusPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireAnyPermissionForPage(
+  const user = await requireAnyPermissionForPage(
     '/reports/documents',
     'documents.issue',
     'procurement.read.all',
@@ -186,6 +188,32 @@ export default async function DocumentStatusPage({
           <DocumentExceptionList rows={exceptions.rows} />
         )}
       </section>
+
+      {/*
+        ไฟล์ CSV มีได้ตารางเดียวต่อไฟล์ จึงแยกเป็นสองลิงก์ ส่วน XLSX รวมทั้งสอง
+        ตารางเป็นสองชีตในไฟล์เดียวเสมอ (ดู export/route.ts) — ซ่อนทั้งหมดเมื่อ
+        รายการยกเว้นถูกตัด เพราะ Route Handler ปฏิเสธคำขอในกรณีนั้นอยู่แล้ว
+      */}
+      {user.permissions.has('reports.export') && !exceptions.truncated ? (
+        <ExportLinks
+          groups={[
+            {
+              label: 'ทั้งรายงาน (ลำดับเลขที่เอกสาร + เอกสารที่ยังไม่ออกเลข)',
+              links: [{ label: 'XLSX', href: documentStatusExportHref(filter, 'xlsx') }],
+            },
+            {
+              label: 'ลำดับเลขที่เอกสารอย่างเดียว',
+              links: [{ label: 'CSV', href: documentStatusExportHref(filter, 'csv', 'sequence') }],
+            },
+            {
+              label: 'เอกสารที่ยังไม่ออกเลขอย่างเดียว',
+              links: [
+                { label: 'CSV', href: documentStatusExportHref(filter, 'csv', 'exceptions') },
+              ],
+            },
+          ]}
+        />
+      ) : null}
 
       {/*
         ยังไม่ตรวจว่า "รายการนี้ต้องมีเอกสารชนิดใดบ้าง"

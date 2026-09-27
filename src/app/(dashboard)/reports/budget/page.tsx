@@ -3,9 +3,16 @@ import Link from 'next/link';
 import { requireAnyPermissionForPage } from '@/server/auth/guard';
 import { loadBudgetReportRows, loadFiscalYearOptions } from '@/server/reports/repository';
 import { parseBudgetReportFilter } from '@/domain/budget/report-schemas';
-import { availableOf, buildBudgetReport, overdrawnRows } from '@/domain/budget/report';
+import {
+  availableOf,
+  BUDGET_REPORT_DIMENSION_LABELS_TH,
+  buildBudgetReport,
+  overdrawnRows,
+} from '@/domain/budget/report';
 import { BudgetReportFilters } from '@/features/reports/budget-report-filters';
 import { BudgetReportTable } from '@/features/reports/budget-report-table';
+import { ExportLinks } from '@/features/reports/export-links';
+import { budgetReportExportHref } from '@/features/reports/export-hrefs';
 import { formatSatang } from '@/features/reports/format';
 import { formatThaiDate } from '@/lib/format/thai-date';
 
@@ -27,7 +34,7 @@ export default async function BudgetReportPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireAnyPermissionForPage('/reports/budget', 'budget.read', 'budget.manage');
+  const user = await requireAnyPermissionForPage('/reports/budget', 'budget.read', 'budget.manage');
 
   const filter = parseBudgetReportFilter(await searchParams);
   const [rows, fiscalYears] = await Promise.all([
@@ -104,16 +111,27 @@ export default async function BudgetReportPage({
         ) : (
           <BudgetReportTable report={report} />
         )}
-
-        {/*
-          ไม่มีการส่งออกเป็นไฟล์ในรอบนี้
-
-          กติกา export ของแผนต่อเนื่อง (PR-09) กำหนดไว้หลายข้อที่ต้องทำให้ครบ
-          พร้อมกัน เช่น typed date ใน XLSX, print area, export log และการปิดบัง
-          ข้อมูลตามบทบาท การปล่อยปุ่มดาวน์โหลดออกไปก่อนโดยยังไม่มีสิ่งเหล่านั้น
-          จะได้ไฟล์ที่เปิดกับ Excel ภาษาไทยแล้วอ่านยอดผิด ซึ่งแย่กว่าไม่มีปุ่ม
-        */}
       </section>
+
+      {/*
+        ปุ่มส่งออกซ่อนไว้เมื่อไม่มี reports.export — สิทธิ์นี้แยกจาก budget.read
+        ที่ใช้เปิดหน้านี้โดยตั้งใจ (ดูคอมเมนต์ด้านบนของไฟล์) การดูบนจอกับการนำ
+        ข้อมูลออกนอกระบบเป็นคนละสิทธิ์ ปุ่มที่ซ่อนไว้เป็นเพียง UX เท่านั้น —
+        Route Handler ที่ /reports/budget/export ตรวจสิทธิ์นี้ซ้ำอีกชั้นเสมอ
+      */}
+      {user.permissions.has('reports.export') ? (
+        <ExportLinks
+          groups={[
+            {
+              label: `ยอดงบตาม${BUDGET_REPORT_DIMENSION_LABELS_TH[filter.dimension]}`,
+              links: [
+                { label: 'XLSX', href: budgetReportExportHref(filter, 'xlsx') },
+                { label: 'CSV', href: budgetReportExportHref(filter, 'csv') },
+              ],
+            },
+          ]}
+        />
+      ) : null}
     </div>
   );
 }
