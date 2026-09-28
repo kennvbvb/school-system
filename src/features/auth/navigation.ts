@@ -63,7 +63,6 @@ export const NAV_SECTIONS: readonly NavSection[] = [
         href: '/inventory/items',
         labelTh: 'คลังวัสดุ',
         anyOf: ['inventory.read'],
-        comingSoon: true,
       },
       { href: '/assets', labelTh: 'ทะเบียนครุภัณฑ์', anyOf: ['assets.read'], comingSoon: true },
     ],

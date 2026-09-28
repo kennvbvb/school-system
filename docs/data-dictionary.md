@@ -964,3 +964,98 @@ route ตรวจค่านี้ก่อนส่งไฟล์กลั�
 - **ทะเบียนจัดซื้อจัดจ้างที่เกิน 5,000 รายการต่อปีงบยังส่งออกทั้งเล่มไม่ได้**
   (ดูหัวข้อ "ข้อมูลถูกตัด (truncated)" ด้านบน) ต้องทำ keyset pagination/streaming
   เพิ่มถ้าพบว่าเกิดขึ้นจริง
+
+---
+
+## `inventory_items` / `stock_movements` — คลังพัสดุ (PR-07)
+
+เพิ่มใน migration `20260927000100_inventory.sql` และ `20260927000200_inventory_rls.sql`
+ตาม `docs/CONTINUATION_PLAN.md` ข้อ 6.8
+
+### บัตรบัญชีพัสดุ
+
+`inventory_items` หนึ่งแถวต่อหนึ่งชนิดพัสดุ ผูก `unit_id` (บังคับ),
+`item_category_id` และ `location_id` (ไม่บังคับ) กับข้อมูลพื้นฐานที่มีอยู่แล้ว
+`minimum_quantity` ใช้เตือนเมื่อยอดต่ำกว่าจุดสั่งซื้อซ้ำเท่านั้น ยังไม่ผูกกับ
+workflow จัดซื้ออัตโนมัติใด
+
+### แถวใน ledger
+
+`stock_movements` เป็น **append-only** เหมือน `budget_movements` — เพิกถอน
+privilege `insert`/`update`/`delete` ที่ระดับตาราง การลงรายการทำผ่าน
+`stock_post_movement()` เท่านั้น เพราะ function ล็อกแถว `inventory_items`
+ก่อนอ่านยอด
+
+ต่างจาก `budget_movements` ตรงที่ `balance_after` เป็น**คอลัมน์**ที่บันทึกใน
+ทรานแซกชันเดียวกับแถว ไม่ใช่ view ที่ sum ทุกครั้ง (ดูเหตุผลในข้อ 2.29 ของ
+`docs/assumptions.md`) — อ่านยอดล่าสุดของแต่ละรายการได้จาก view
+`stock_item_balances` (ใช้ `distinct on (item_id) ... order by created_at desc`)
+
+`quantity` เป็น `numeric(18,3)` **เป็นบวกเสมอ** ทิศทางมาจาก `movement_type`
+เหตุผลเดียวกับ `budget_movements.amount`
+
+| ชนิด                  | ผลต่อยอดคงเหลือ  | ใช้เมื่อ                              |
+| --------------------- | ---------------- | ------------------------------------- |
+| `OPENING_BALANCE`     | เพิ่ม            | ยอดยกมา — ลงได้ครั้งแรกเท่านั้น       |
+| `RECEIPT`             | เพิ่ม            | รับเข้า เช่น รับจากการจัดซื้อ         |
+| `RETURN`              | เพิ่ม            | รับคืน                                |
+| `ADJUSTMENT_INCREASE` | เพิ่ม            | นับสต็อกพบยอดเกินบัญชี                |
+| `ISSUE`               | ลด               | เบิกจ่าย — ต้องมีผู้เบิกและผู้อนุมัติ |
+| `ADJUSTMENT_DECREASE` | ลด               | นับสต็อกพบยอดขาด/ของชำรุด/สูญหาย      |
+| `REVERSAL`            | กลับทิศของต้นทาง | แก้รายการที่ลงผิด                     |
+
+check constraint บังคับความสมบูรณ์ของแถวตามชนิด:
+`stock_movements_reversal_target` (มี `reverses_movement_id` เฉพาะ `REVERSAL`),
+`stock_movements_issue_requires_actors` (`ISSUE` ต้องมี `requested_by` และ
+`approved_by`), `stock_movements_adjustment_requires_reason` (`ADJUSTMENT_*`
+ต้องมี `reason` และ `approved_by`), `stock_movements_reference_not_blank`
+(ทุกแถวต้องมี `reference` — เลขที่เอกสารอ้างอิง ไม่มีข้อยกเว้น),
+`stock_movements_balance_not_negative` (`balance_after >= 0` เป็นแนวป้องกัน
+ชั้นที่สองนอกเหนือจากที่ `stock_post_movement()` ตรวจไว้แล้ว)
+
+`stock_movements_single_reversal` เป็น partial unique index แบบเดียวกับ
+`budget_movements_single_reversal` — ย้อนรายการเดิมได้ครั้งเดียว
+
+### ข้อจำกัดที่ `stock_post_movement()` บังคับเพิ่ม (ตรวจกับ DB ไม่ได้ด้วย check constraint เดี่ยว)
+
+| กฎ                                                                        | ถ้าไม่มี                                                |
+| ------------------------------------------------------------------------- | ------------------------------------------------------- |
+| ล็อกแถว `inventory_items` ก่อนอ่านยอดล่าสุดเสมอ                           | สองคำขอพร้อมกันเห็นยอดเดิม ลงได้ทั้งคู่จนยอดติดลบ       |
+| `OPENING_BALANCE` ลงได้เฉพาะตอนที่ยังไม่มีรายการเคลื่อนไหวใดของรายการนั้น | ยอดยกมาซ้อนทับรายการที่มีอยู่แล้ว ยอดจะไม่ตรงของจริง    |
+| ชนิดอื่นลงได้ต่อเมื่อมียอดยกมาแล้วเท่านั้น                                | ไม่รู้ฐานเริ่มต้น ยอดคงเหลือที่แสดงจะไม่มีความหมาย      |
+| **ยอดคงเหลือหลังลงแล้วต้อง `>= 0` เสมอ ไม่มีสิทธิ์ override**             | เบิก/ปรับลดเกินของจริงที่มีอยู่ได้ ซึ่งเป็นไปไม่ได้จริง |
+| `REVERSAL` ต้องอ้างแถวที่ยังไม่ถูกย้อน และแถวนั้นต้องไม่ใช่ `REVERSAL`    | ย้อนซ้ำหรือย้อนรายการย้อนทำให้ยอดคลาดเคลื่อน            |
+
+ข้อสี่เป็นความต่างสำคัญจาก `budget_post_movement()` ซึ่งมี `budget.override`
+ให้ลงเกินยอดได้เมื่อมีเหตุผล — สต็อกไม่มีทางยกเว้นแบบนั้นเพราะเป็นข้อจำกัด
+ทางกายภาพ (ของที่ไม่มีอยู่เบิกออกไปไม่ได้จริง) ไม่ใช่นโยบาย
+
+### RLS
+
+| ตาราง             | อ่าน             | เขียน                                                |
+| ----------------- | ---------------- | ---------------------------------------------------- |
+| `inventory_items` | `inventory.read` | `inventory.adjust` (ไม่มี delete)                    |
+| `stock_movements` | `inventory.read` | **ไม่มีเลย** — ผ่าน `stock_post_movement()` เท่านั้น |
+
+สิทธิ์ที่ต้องใช้ต่อชนิดรายการถูกเลือกใน `stock_post_movement()` เอง
+(ไม่ใช่ที่ RLS เพราะไม่มี insert policy อยู่แล้ว): `ISSUE` → `inventory.issue`,
+`ADJUSTMENT_*`/`REVERSAL` → `inventory.adjust`, ที่เหลือ (`RECEIPT`/`RETURN`/
+`OPENING_BALANCE`) → `inventory.receive` — ทั้งสี่สิทธิ์ประกาศไว้ล่วงหน้าแล้ว
+ใน `src/domain/auth/permissions.ts` ตั้งแต่รอบก่อน ไม่ต้องเพิ่มสิทธิ์ใหม่
+
+### สิ่งที่ยังไม่ได้ทำ
+
+- **ยังไม่เชื่อมกับใบตรวจรับ/ใบเบิกจริง** — `source_type`/`source_id` เก็บไว้
+  เป็นคู่ text/uuid (แบบเดียวกับ `budget_movements`) แต่ยังไม่มีตารางปลายทาง
+  ให้ผูก การรับเข้า/เบิกจ่ายรอบนี้จึงเป็นการกรอกเลขที่เอกสารอ้างอิงเป็น
+  ข้อความอิสระ (`reference`)
+- **ไม่บังคับแนบไฟล์หลักฐานการปรับยอด** — คอลัมน์ `attachment_id` มีไว้แล้ว
+  แต่ยังไม่บังคับด้วย check constraint เพราะการอัปโหลดไฟล์ก่อนมี movement id
+  ต้องมี flow สองขั้นตอนที่ยังไม่ได้สร้าง (เหตุผล+ผู้อนุมัติยังบังคับอยู่)
+- **ไม่มีการแบ่ง lot/batch หรือ FIFO** — หนึ่งบัตรบัญชีต่อรายการเท่านั้น
+- **ไม่มี unit conversion** — `quantity` ทั้งหมดอยู่ในหน่วยเดียวของ `unit_id`
+  ที่กำหนดไว้ตอนสร้างรายการ
+- **migration ยังไม่ได้รันบน PostgreSQL จริงในสภาพแวดล้อมที่พัฒนา PR นี้**
+  (ไม่มี Docker/Supabase CLI/PostgreSQL ในสภาพแวดล้อม) ตรวจด้วยการอ่านทวนมือ
+  เทียบกับ `budget_ledger.sql`/`budget_ledger_rls.sql` ที่ผ่านการทดสอบจริงแล้ว
+  เท่านั้น — CI (GitHub Actions) จะเป็นผู้ยืนยันจริงก่อน merge
