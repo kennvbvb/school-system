@@ -85,11 +85,18 @@ select pg_temp.assert_eq(
     '{"name_th": "ผู้ขาย เอ"}'::jsonb, null, null, null
   ) is not null), true, 'ผู้ใช้ A เรียก record_audit_event สำเร็จ');
 
+-- ตรวจ actor_id ต้องอ่านด้วย role ที่ไม่ถูกจำกัดด้วย audit_events_select
+-- (ซึ่งกรองด้วย has_permission('audit.read') — ไม่ใช่สิ่งที่ PR นี้เปลี่ยน)
+-- ผู้ใช้ทดสอบในไฟล์นี้ไม่มีสิทธิ์นั้น ถ้าไม่ reset role การอ่านจะได้ 0 แถวเสมอ
+-- ไม่ว่า insert จะถูกหรือผิด ทำให้ assert_eq เทียบกับ NULL ผิดเหตุผล
+reset role;
+
 select pg_temp.assert_eq(
   (select actor_id from public.audit_events where request_id = 'req-sec-a'),
   'f1111111-1111-4111-8111-111111111111'::uuid,
   'actor_id ของแถวที่ A เรียกเป็น A จริง ไม่ใช่ค่าที่ปลอมได้');
 
+set local role authenticated;
 set local request.jwt.claim.sub = 'f2222222-2222-4222-8222-222222222222';
 
 select pg_temp.assert_eq(
@@ -98,10 +105,14 @@ select pg_temp.assert_eq(
     '{"name_th": "ผู้ขาย บี"}'::jsonb, null, null, null
   ) is not null), true, 'ผู้ใช้ B เรียก record_audit_event สำเร็จ');
 
+reset role;
+
 select pg_temp.assert_eq(
   (select actor_id from public.audit_events where request_id = 'req-sec-b'),
   'f2222222-2222-4222-8222-222222222222'::uuid,
   'actor_id ของแถวที่ B เรียกเป็น B จริง — คนละคนได้ actor_id คนละค่าตามผู้เรียกจริง');
+
+set local role authenticated;
 
 -- ---------------------------------------------------------------------------
 -- บัญชีที่ถูกปิดใช้งานเรียกไม่ได้ แม้จะมี auth.uid()
