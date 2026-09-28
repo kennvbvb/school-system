@@ -75,7 +75,7 @@ $$;
 
 revoke execute on function public.record_audit_event(
   text, text, text, text, jsonb, jsonb, jsonb, text, text
-) from public;
+) from public, anon;
 
 grant execute on function public.record_audit_event(
   text, text, text, text, jsonb, jsonb, jsonb, text, text
