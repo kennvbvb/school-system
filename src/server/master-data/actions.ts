@@ -75,7 +75,7 @@ function toActionError(error: unknown, context: string): ActionResult<never> {
 
 export async function createFiscalYear(input: unknown): Promise<ActionResult<{ id: string }>> {
   try {
-    const user = await requirePermission('settings.manage');
+    await requirePermission('settings.manage');
 
     const parsed = fiscalYearSchema.safeParse(input);
     if (!parsed.success) {
@@ -107,7 +107,6 @@ export async function createFiscalYear(input: unknown): Promise<ActionResult<{ i
       action: 'entity.create',
       entityType: 'fiscal_year',
       entityId: data.id,
-      actorId: user.id,
       after: {
         code: parsed.data.code,
         yearBE: parsed.data.yearBE,
@@ -181,7 +180,6 @@ async function changeFiscalYearStatus(
       action: 'admin.action',
       entityType: 'fiscal_year',
       entityId: parsed.data.fiscalYearId,
-      actorId: user.id,
       before: { status: current.status },
       after: { status: next },
       metadata: { code: current.code, reason: parsed.data.reason },
@@ -208,7 +206,7 @@ export async function reopenFiscalYear(input: unknown): Promise<ActionResult<voi
 
 export async function createFundingSource(input: unknown): Promise<ActionResult<{ id: string }>> {
   try {
-    const user = await requirePermission('masters.manage');
+    await requirePermission('masters.manage');
 
     const parsed = fundingSourceSchema.safeParse(input);
     if (!parsed.success) {
@@ -233,7 +231,6 @@ export async function createFundingSource(input: unknown): Promise<ActionResult<
       action: 'entity.create',
       entityType: 'funding_source',
       entityId: data.id,
-      actorId: user.id,
       after: { code: parsed.data.code, nameTh: parsed.data.nameTh },
     });
 
@@ -258,7 +255,7 @@ async function setActiveFlag(
   isActive: unknown,
 ): Promise<ActionResult<void>> {
   try {
-    const user = await requirePermission('masters.manage');
+    await requirePermission('masters.manage');
 
     if (typeof id !== 'string' || typeof isActive !== 'boolean') {
       return { ok: false, error: INVALID_INPUT_MESSAGE };
@@ -279,7 +276,6 @@ async function setActiveFlag(
       action: 'entity.update',
       entityType,
       entityId: id,
-      actorId: user.id,
       after: { isActive },
     });
 
@@ -309,7 +305,7 @@ export async function setFundingSourceActive(
 
 export async function createProject(input: unknown): Promise<ActionResult<{ id: string }>> {
   try {
-    const user = await requirePermission('masters.manage');
+    await requirePermission('masters.manage');
 
     const parsed = projectSchema.safeParse(input);
     if (!parsed.success) {
@@ -346,7 +342,6 @@ export async function createProject(input: unknown): Promise<ActionResult<{ id: 
       action: 'entity.create',
       entityType: 'project',
       entityId: data.id,
-      actorId: user.id,
       after: {
         code: parsed.data.code,
         nameTh: parsed.data.nameTh,
@@ -461,7 +456,6 @@ export async function createVendor(input: unknown): Promise<ActionResult<{ id: s
       action: 'entity.create',
       entityType: 'vendor',
       entityId: data.id,
-      actorId: user.id,
       after: vendorAuditFields(vendor),
       metadata: { acknowledgedDuplicates: acknowledgedDuplicatesForAudit(findings) },
     });
@@ -482,7 +476,7 @@ export async function createVendor(input: unknown): Promise<ActionResult<{ id: s
  */
 export async function updateVendor(input: unknown): Promise<ActionResult<void>> {
   try {
-    const user = await requirePermission('masters.manage');
+    await requirePermission('masters.manage');
 
     const parsed = vendorUpdateSchema.safeParse(input);
     if (!parsed.success) {
@@ -533,7 +527,6 @@ export async function updateVendor(input: unknown): Promise<ActionResult<void>> 
       action: 'entity.update',
       entityType: 'vendor',
       entityId: vendorId,
-      actorId: user.id,
       before: vendorAuditFields(current),
       after: vendorAuditFields(vendor),
       metadata: { acknowledgedDuplicates: acknowledgedDuplicatesForAudit(findings) },

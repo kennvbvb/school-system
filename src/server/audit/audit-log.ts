@@ -15,6 +15,16 @@ import { redactSensitive } from '@/lib/redact';
  *   * การเขียน audit ควรอยู่ใน transaction เดียวกับข้อมูลที่มันบันทึกถึง
  *     Phase 1 ยังเป็นการเขียนแยก และจะย้ายเข้า RPC เดียวกันใน Phase 3
  *     เมื่อมี domain service ที่ทำหลายตารางพร้อมกัน (ดู docs/assumptions.md)
+ *
+ * **การเขียนตรงถูกปิดแล้ว (PR-S01, migration 20260928000100)** — ตาราง
+ * `audit_events` ไม่มี policy/privilege insert ให้ authenticated/anon เลย
+ * ทางเดียวที่เขียนได้คือ RPC `record_audit_event()` ซึ่ง**กำหนด `actor_id` จาก
+ * `auth.uid()` ของผู้เรียกเองเสมอ ไม่รับค่าจาก client** — ก่อนหน้านี้ policy
+ * insert เดิมตรวจแค่ "บัญชี active" ไม่ได้ตรวจว่า `actor_id` ที่ส่งมาตรงกับ
+ * ผู้เรียกจริงหรือไม่ ผู้ใช้ที่มี valid session จึงเรียก Supabase REST API ตรง
+ * (ข้าม Next.js ทั้งหมด) แล้วปลอม `actor_id` เป็นคนอื่นได้ ทำลายความน่าเชื่อถือ
+ * ของ audit log ทั้งระบบซึ่งเป็นหลักฐานที่แก้ไม่ได้อยู่แล้ว — จึงลบพารามิเตอร์
+ * `actorId` ออกจาก `AuditEventInput` ผู้เรียกทุกจุดจึงไม่ต้องส่งมาอีกต่อไป
  */
 
 export type AuditAction =
@@ -53,7 +63,6 @@ export interface AuditEventInput {
   action: AuditAction;
   entityType: string;
   entityId?: string | null;
-  actorId?: string | null;
   before?: unknown;
   after?: unknown;
   metadata?: Record<string, unknown>;
@@ -81,17 +90,16 @@ export async function recordAuditEvent(input: AuditEventInput): Promise<RecordAu
 
   const supabase = await createSupabaseServerClient();
 
-  const { error } = await supabase.from('audit_events').insert({
-    request_id: requestId,
-    actor_id: input.actorId ?? null,
-    action: input.action,
-    entity_type: input.entityType,
-    entity_id: input.entityId ?? null,
-    before_json: input.before === undefined ? null : redactSensitive(input.before),
-    after_json: input.after === undefined ? null : redactSensitive(input.after),
-    metadata_json: input.metadata ? redactSensitive(input.metadata) : null,
-    ip_hash: hashIp(ip),
-    user_agent: headerList.get('user-agent')?.slice(0, 512) ?? null,
+  const { error } = await supabase.rpc('record_audit_event', {
+    p_request_id: requestId,
+    p_action: input.action,
+    p_entity_type: input.entityType,
+    p_entity_id: input.entityId ?? null,
+    p_before_json: input.before === undefined ? null : redactSensitive(input.before),
+    p_after_json: input.after === undefined ? null : redactSensitive(input.after),
+    p_metadata_json: input.metadata ? redactSensitive(input.metadata) : null,
+    p_ip_hash: hashIp(ip),
+    p_user_agent: headerList.get('user-agent')?.slice(0, 512) ?? null,
   });
 
   if (error) {

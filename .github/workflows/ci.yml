@@ -161,6 +161,12 @@ jobs:
         # และช่วงเลขที่กว้างผิดปกติต้องไม่ทำให้ query ระเบิด
         run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/document_status_test.sql
 
+      - name: ทดสอบ trusted RPC ของ audit log บนฐานข้อมูลจริง (PR-S01)
+        # insert ตรงเข้า audit_events ต้องถูกปฏิเสธเสมอ และ actor_id ต้องมาจาก
+        # auth.uid() ของผู้เรียกจริงเท่านั้น — ปิดช่องที่ผู้ใช้หนึ่งเคยปลอม
+        # actor_id เป็นอีกคนได้ผ่าน Supabase REST API ตรง ข้าม Next.js ทั้งหมด
+        run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/audit_trusted_rpc_test.sql
+
   e2e:
     name: End-to-end smoke tests
     runs-on: ubuntu-latest
