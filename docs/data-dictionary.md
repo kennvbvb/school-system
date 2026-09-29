@@ -96,8 +96,15 @@ PK ประกอบ `(role_code, permission_code)` — กันการผ�
 
 ## `audit_events` — บันทึกการกระทำ
 
-**append-only** — มีเฉพาะ policy `select` และ `insert` และเพิกถอน `update, delete`
-ที่ระดับ table privilege ด้วย (FR-AUD-002)
+**append-only** — มีเฉพาะ policy `select` และเพิกถอน `insert, update, delete`
+ที่ระดับ table privilege ด้วย (FR-AUD-002) — **เขียนได้ทางเดียวคือ RPC
+`record_audit_event()` (migration 0023, PR-S01)** เดิม policy `insert` ตรวจแค่
+"บัญชี active" ไม่ได้ตรวจว่า `actor_id` ที่ผู้เรียกส่งมาตรงกับผู้เรียกจริงหรือไม่
+ผู้ใช้ที่มี valid session จึงเรียก Supabase REST API ตรง (ข้าม Next.js ทั้งหมด)
+แล้วปลอม `actor_id` เป็นคนอื่นได้ — ตอนนี้ `record_audit_event()` กำหนด
+`actor_id` จาก `auth.uid()` ของผู้เรียกเองเสมอ ไม่มีพารามิเตอร์ให้ระบุ actor เอง
+เลย ดู `supabase/tests/audit_trusted_rpc_test.sql` สำหรับ test ที่พิสูจน์ว่า
+คนละคนเรียกได้ `actor_id` ตามตัวเองจริง ปลอมกันไม่ได้
 
 | คอลัมน์                      | ชนิด  | หมายเหตุ                                                         |
 | ---------------------------- | ----- | ---------------------------------------------------------------- |

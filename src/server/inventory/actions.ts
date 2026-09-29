@@ -97,7 +97,6 @@ export async function createInventoryItem(input: unknown): Promise<ActionResult<
       action: 'entity.create',
       entityType: 'inventory_item',
       entityId: data.id,
-      actorId: user.id,
       after: { code: parsed.data.code, nameTh: parsed.data.nameTh },
     });
 
@@ -120,7 +119,7 @@ export async function setInventoryItemStatus(input: {
   reason: string;
 }): Promise<ActionResult<void>> {
   try {
-    const user = await requirePermission('inventory.adjust');
+    await requirePermission('inventory.adjust');
 
     const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase
@@ -137,7 +136,6 @@ export async function setInventoryItemStatus(input: {
       action: 'admin.action',
       entityType: 'inventory_item',
       entityId: data.id,
-      actorId: user.id,
       after: { status: input.status },
       metadata: { code: data.code, reason: input.reason },
     });

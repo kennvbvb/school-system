@@ -160,7 +160,6 @@ export async function createProcurementDraft(
       action: 'entity.create',
       entityType: 'procurement',
       entityId: data.id,
-      actorId: user.id,
       after: { reference: data.reference, subject: parsed.data.subject },
       metadata: {
         itemCount: parsed.data.items.length,
@@ -262,7 +261,6 @@ export async function updateProcurementDraft(
       action: 'entity.update',
       entityType: 'procurement',
       entityId: parsed.data.id,
-      actorId: user.id,
       before: { version: parsed.data.expectedVersion },
       after: { subject: parsed.data.subject },
       metadata: { itemCount: parsed.data.items.length },
@@ -295,7 +293,7 @@ export async function updateProcurementDraft(
  */
 export async function submitProcurement(input: unknown): Promise<ActionResult<void>> {
   try {
-    const user = await requirePermission('procurement.submit');
+    await requirePermission('procurement.submit');
 
     const parsed = procurementSubmitSchema.safeParse(input);
     if (!parsed.success) {
@@ -329,7 +327,6 @@ export async function submitProcurement(input: unknown): Promise<ActionResult<vo
       action: 'procurement.status_change',
       entityType: 'procurement',
       entityId: parsed.data.id,
-      actorId: user.id,
       after: { status: 'PENDING_REVIEW' },
       metadata: { via: 'ui' },
     });

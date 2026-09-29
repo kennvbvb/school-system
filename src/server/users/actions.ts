@@ -61,7 +61,7 @@ async function currentRequestId(): Promise<string> {
  */
 export async function inviteUser(input: unknown): Promise<ActionResult<string>> {
   try {
-    const actor = await requirePermission('users.manage');
+    await requirePermission('users.manage');
 
     const parsed = userInviteSchema.safeParse(input);
     if (!parsed.success) {
@@ -149,7 +149,6 @@ export async function inviteUser(input: unknown): Promise<ActionResult<string>> 
      * **ไม่บันทึกอะไรที่เกี่ยวกับรหัสผ่าน เพราะไม่มีรหัสผ่านให้บันทึก**
      */
     await recordAuditEvent({
-      actorId: actor.id,
       action: 'user.invite',
       entityType: 'profile',
       entityId: userId,
@@ -166,7 +165,7 @@ export async function inviteUser(input: unknown): Promise<ActionResult<string>> 
 /** แก้ข้อมูลโปรไฟล์ — ไม่แตะอีเมล เพราะอีเมลคือกุญแจเข้าระบบ */
 export async function updateUserProfile(input: unknown): Promise<ActionResult<void>> {
   try {
-    const actor = await requirePermission('users.manage');
+    await requirePermission('users.manage');
 
     const parsed = userUpdateSchema.safeParse(input);
     if (!parsed.success) {
@@ -201,7 +200,6 @@ export async function updateUserProfile(input: unknown): Promise<ActionResult<vo
     }
 
     await recordAuditEvent({
-      actorId: actor.id,
       action: 'entity.update',
       entityType: 'profile',
       entityId: userId,

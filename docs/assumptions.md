@@ -464,11 +464,11 @@ P1/P2 ใน PR #20 (ยังไม่ merge) — แก้แล้วทั�
   action ที่สำเร็จแล้วล้มตาม) แต่การส่งออกไฟล์คือการนำข้อมูลออกนอกระบบโดยตรง
   จึงต้อง fail closed — เปลี่ยน `recordAuditEvent()` ให้คืน `{ok: boolean}`
   แทน `void` (ไม่กระทบผู้เรียกเดิมที่ไม่ได้ใช้ค่าที่คืน) แล้วให้ทั้งสาม export
-  route ตรวจค่านี้ก่อนส่งไฟล์ คืน HTTP 500 แทนถ้าบันทึก audit ไม่สำเร็จ **ยังไม่ได้
-  ปิด direct insert ของ `audit_events` หรือสร้าง trusted RPC ตามที่รายงานเสนอ**
-  เพราะเป็นการเปลี่ยน RLS ของตารางที่ทุก mutation ในระบบใช้ร่วมกัน ไม่ใช่แค่จุด
-  ส่งออก — ทิ้งไว้เป็นงานของ PR-S01 (security boundary บน `main`) ตามที่รายงาน
-  เองก็แยกเป็นคนละงาน
+  route ตรวจค่านี้ก่อนส่งไฟล์ คืน HTTP 500 แทนถ้าบันทึก audit ไม่สำเร็จ **การปิด
+  direct insert ของ `audit_events` และสร้าง trusted RPC ตามที่รายงานเสนอทำเสร็จ
+  แล้วใน PR-S01 (ข้อ 2.30) — ตอนแก้ PR #20 ยังทิ้งไว้ก่อนเพราะเป็นการเปลี่ยน RLS
+  ของตารางที่ทุก mutation ในระบบใช้ร่วมกัน ไม่ใช่แค่จุดส่งออก จึงแยกเป็นคนละ PR
+  บน `main` ตามที่รายงานเองก็แยกเป็นคนละงาน**
 - **[P1] `exceljs` ดึง `uuid@8.3.2` ที่มี moderate vulnerability**
   (GHSA-w5hq-g745-h8pq — buffer bounds check พลาดใน `v3`/`v5`/`v6` เมื่อมีคน
   ส่ง `buf` เข้ามาเอง) ตรวจโค้ดของ exceljs แล้วพบว่าใช้แค่ `uuid.v4()` จุดเดียว
@@ -583,6 +583,52 @@ CLI/PostgreSQL ทำงานอยู่ จึงตรวจ migration 0021/
 `budget_ledger.sql`/`budget_ledger_rls.sql` ที่ผ่านการทดสอบจริงมาแล้วเท่านั้น
 ไม่ใช่การรัน `supabase db reset` จริง — ถ้า CI (GitHub Actions) พบปัญหาจะแก้
 ในรอบติดตาม PR ต่อไป
+
+### 2.30 ปิด direct insert ของ audit_events — สิ่งที่ตัดสินใจตอนทำ PR-S01
+
+ที่มา: รายงานตรวจสอบ 27 กันยายน 2569 ทิ้งงานนี้ไว้ตอนแก้ PR #20 (ข้อ 2.28)
+เพราะกระทบ RLS ของตารางที่ทุก mutation ในระบบใช้ร่วมกัน จึงแยกมาทำบน `main`
+โดยตรงในชื่อ PR-S01 ไม่ผูกกับ PR สายแผนใด (ไม่มีเลข PR-0x)
+
+- **ช่องโหว่จริง**: policy `audit_events_insert` เดิมตรวจแค่
+  `current_profile_is_active()` ไม่ได้ตรวจว่า `actor_id` ที่ผู้เรียกส่งมาตรงกับ
+  ผู้เรียกจริงหรือไม่ ผู้ใช้ที่มี valid session (เช่น เปิด dev tools แล้วเรียก
+  Supabase REST API ตรง ข้าม Next.js server action ทั้งหมด) จึง `insert` แถวที่
+  `actor_id` เป็นคนอื่นได้ — audit_events เป็นตารางเดียวที่ระบบอ้างว่า
+  "append-only แก้ไม่ได้ ตรวจสอบย้อนหลังได้เสมอ" แต่ตัวตนผู้กระทำกลับปลอมได้
+  จากช่องทางที่ไม่ใช่แอป ทำให้หลักฐานทั้งตารางยืนยันอะไรไม่ได้จริง
+- **ทางแก้**: ปิด policy/table privilege insert ทั้งหมด (เหมือน
+  `budget_movements`/`stock_movements`) แล้วสร้าง RPC `record_audit_event()`
+  (security definer) เป็นทางเดียวที่เขียนได้ — ฟังก์ชันกำหนด `actor_id` จาก
+  `auth.uid()` ของผู้เรียกเองเสมอ **ไม่มีพารามิเตอร์ให้ระบุ actor เองเลย** จึง
+  ไม่ใช่แค่ "ตรวจว่าตรงไหม" แต่ตัดความเป็นไปได้ที่จะส่งค่าอื่นออกทั้งหมด
+- **ไม่กระทบ RPC เดิมที่ insert เข้า audit_events เองอยู่แล้ว** (`budget_post_movement`,
+  `stock_post_movement`, `procurement_transition`, `procurement_disburse` ฯลฯ)
+  เพราะทุกตัวเป็น security definer ที่รันเป็นเจ้าของฟังก์ชัน (ผู้รัน migration)
+  ซึ่งไม่ถูก grant/revoke ของ `authenticated`/`anon` บังคับอยู่แล้ว — เหตุผล
+  เดียวกับที่ตารางเหล่านั้นเองก็ไม่มี insert policy ให้ผู้ใช้ทั่วไป
+- **ลบพารามิเตอร์ `actorId` ออกจาก `AuditEventInput`** (`src/server/audit/audit-log.ts`)
+  ผู้เรียกทุกจุด (9 ไฟล์) ไม่ต้องส่งมาอีกต่อไป เพราะ RPC เป็นผู้กำหนดเองแล้ว —
+  ตรวจแล้วว่าทุกจุดเดิมส่ง `actorId` เป็นผู้ใช้ปัจจุบันของ session นั้นเองอยู่แล้ว
+  (ไม่มีจุดใดตั้งใจบันทึกแทนคนอื่น) การลบพารามิเตอร์จึงไม่เปลี่ยนพฤติกรรมที่ถูกต้อง
+  อยู่แล้ว มีแต่ปิดช่องที่ทำผิดได้จากภายนอกแอป
+- **ยังไม่รองรับเหตุการณ์ก่อนมี session** เช่น `auth.login_failed` (พิมพ์รหัสผ่าน
+  ผิด) เพราะ RPC ต้องมี `auth.uid()` เสมอ — ฟีเจอร์นี้ยังไม่มี call site จริงใน
+  โค้ด (มีแค่ชนิดที่ประกาศไว้ใน `AuditAction`) จึงยังไม่ต้องแก้ในรอบนี้ ถ้าจะทำ
+  ต้องออกแบบเส้นทางแยกสำหรับผู้เรียกที่ยังไม่ authenticated
+
+**มี test เพิ่มจากรอบนี้**: `supabase/tests/audit_trusted_rpc_test.sql` (SQL
+test บน PostgreSQL จริง — พิสูจน์ว่า insert ตรงถูกปฏิเสธ, สองคนเรียก
+`record_audit_event()` ได้ `actor_id` ตามตัวเองจริงคนละค่า, บัญชีที่ปิดใช้งาน
+เรียกไม่ได้, ยังไม่ authenticated เรียกไม่ได้แม้ role จะเป็น authenticated,
+`anon` เรียกไม่ได้เลยที่ระดับ grant, และ security definer function อื่นยังทำงาน
+ปกติ) เพิ่ม step ใน `.github/workflows/ci.yml` ให้รันไฟล์นี้ต่อจาก
+`document_status_test.sql`
+
+**ยังไม่ได้รันบน PostgreSQL จริงในสภาพแวดล้อมที่พัฒนา PR นี้** เหตุผลเดียวกับ
+ข้อ 2.29 (ไม่มี Docker/Supabase CLI ในสภาพแวดล้อมนี้) — migration และ SQL test
+ผ่านการอ่านทวนมืออย่างละเอียดเทียบกับ `budget_ledger_rls.sql`/`audit_read_test.sql`
+ที่ผ่านการทดสอบจริงมาแล้ว ถ้า CI พบปัญหาจะแก้ทันทีในรอบติดตาม PR นี้
 
 ---
 

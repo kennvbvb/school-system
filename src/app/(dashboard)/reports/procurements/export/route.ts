@@ -82,7 +82,6 @@ export async function GET(request: NextRequest): Promise<Response> {
       action: 'report.export',
       entityType: 'report_export',
       entityId: REPORT_KEY,
-      actorId,
       metadata: {
         report: REPORT_KEY,
         format,

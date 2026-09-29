@@ -140,7 +140,6 @@ export async function createBudgetAccount(input: unknown): Promise<ActionResult<
       action: 'entity.create',
       entityType: 'budget_account',
       entityId: data.id,
-      actorId: user.id,
       after: { code: parsed.data.code, fiscalYearId: parsed.data.fiscalYearId },
     });
 
@@ -187,7 +186,6 @@ export async function closeBudgetAccount(input: unknown): Promise<ActionResult<v
       action: 'admin.action',
       entityType: 'budget_account',
       entityId: data.id,
-      actorId: user.id,
       before: { status: 'OPEN' },
       after: { status: 'CLOSED' },
       metadata: { code: data.code, reason: parsed.data.reason },
