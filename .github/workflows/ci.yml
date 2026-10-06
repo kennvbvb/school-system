@@ -167,11 +167,54 @@ jobs:
         # actor_id เป็นอีกคนได้ผ่าน Supabase REST API ตรง ข้าม Next.js ทั้งหมด
         run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/audit_trusted_rpc_test.sql
 
+      - name: ทดสอบความครบของทะเบียนที่ขอบเขต 999/1000/1001 และ 4999/5000/5001 (F-01)
+        # ฐานข้อมูลต้องบอก total_count เองใน snapshot เดียวกับแถว — ขอ limit+1 แล้วเดาตัดสินไม่ได้
+        # เพราะ SQL clamp ที่ 5,000 (ชั้น HTTP/PostgREST max_rows พิสูจน์ใน job register-http)
+        run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/procurement_register_completeness_test.sql
+
       - name: ทดสอบ ledger คลังพัสดุบนฐานข้อมูลจริง รวมลงรายการพร้อมกัน (F-02/F-03/F-04)
         # ลำดับ ledger มาจาก sequence_no ไม่ใช่ now()/UUID, ย้อนรายการต้องตรงต้นทางทั้งรายการและจำนวน
         # (ตรวจในฐานข้อมูล ไม่ใช่แค่ server action), รับเข้าครั้งแรกจากศูนย์ได้โดยไม่ต้องมียอดยกมา
         # และคำขอพร้อมกันหลาย session ต้องไม่ทำให้ลำดับชนหรือยอดติดลบ
         run: supabase/tests/run-inventory-tests.sh "$DB_URL"
+
+  register-http:
+    name: Register completeness through PostgREST
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start local Supabase (API + Auth + database)
+        # ชั้น HTTP ต้องมี PostgREST/GoTrue/gateway จริง — `supabase db start` ในอีก job มีแต่ฐานข้อมูล
+        # max_rows ของ PostgREST (config.toml = 1,000) ตัดแถวก่อนถึงแอป SQL ตรง ๆ จึงไม่เห็นเพดานนี้
+        run: |
+          # config.toml ตั้ง [auth.email] enable_signup = false ซึ่ง Supabase CLI แปลเป็น "ปิดผู้ให้บริการอีเมลทั้งหมด"
+          # (GoTrue ตอบ email_provider_disabled: Email logins are disabled) ทำให้ผู้ใช้ทดสอบ sign in
+          # ด้วยรหัสผ่านไม่ได้ — เปิดเฉพาะสำเนาใน runner นี้ ไม่แก้ไฟล์ใน repo; การสมัครสาธารณะยังปิดด้วย [auth] enable_signup = false
+          sed -i '/^\[auth\.email\]/,/^$/ s/^enable_signup = false/enable_signup = true/' supabase/config.toml
+          grep -A1 '^\[auth\.email\]' supabase/config.toml
+          supabase start
+          supabase status -o env > "$RUNNER_TEMP/supabase.env"
+          for key in API_URL DB_URL ANON_KEY SERVICE_ROLE_KEY; do
+            grep -q "^$key=" "$RUNNER_TEMP/supabase.env" || { echo "supabase status ไม่มี $key"; exit 1; }
+          done
+
+      - name: ทดสอบทะเบียนครบ/ถูกตัดผ่าน PostgREST จริง (F-01)
+        # ผู้ใช้ทดสอบสร้างผ่าน GoTrue แล้วเรียก RPC ด้วย JWT จริง ที่ 999/1000/1001 และ 4999/5000/5001 แถว
+        run: |
+          get() { grep "^$1=" "$RUNNER_TEMP/supabase.env" | cut -d= -f2- | tr -d '"'; }
+          # `supabase start` รัน seed ตาม config.toml ให้แล้ว (บทบาท/สิทธิ์) — เติมเฉพาะเมื่อยังไม่มี
+          if [ "$(psql "$(get DB_URL)" -t -A -c 'select count(*) from public.roles')" = "0" ]; then
+            psql "$(get DB_URL)" -v ON_ERROR_STOP=1 -f supabase/seed-reference.sql
+          fi
+          supabase/tests/run-register-http-tests.sh \
+            "$(get DB_URL)" "$(get API_URL)" "$(get ANON_KEY)" "$(get SERVICE_ROLE_KEY)"
 
   e2e:
     name: End-to-end smoke tests

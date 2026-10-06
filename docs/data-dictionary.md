@@ -769,8 +769,15 @@ p_classification, p_status, p_date_from, p_date_to, p_limit)` ที่คืน
 
 ### เพดานจำนวนแถว
 
-ฟังก์ชันจำกัดที่ `least(greatest(p_limit, 1), 5000)` ส่วน repository ขอ
-`REGISTER_ROW_LIMIT + 1` แถวเพื่อให้รู้ว่าถูกตัดหรือไม่ เมื่อถูกตัด **หน้าจอ
+ฟังก์ชันจำกัดที่ `least(greatest(p_limit, 1), 5000)` และคืนคอลัมน์ `total_count`
+(`count(*) over ()` นับก่อน limit ใน statement เดียวกับแถว) repository เรียก
+`procurement_register_result()` ซึ่งห่อผลเป็น **jsonb ค่าเดียว**
+`{ "total_count": n, "rows": [...] }` — ค่าเดียวไม่ถูก PostgREST `max_rows` ตัด
+(config.toml = 1,000; ทดสอบกับ PostgREST จริงแล้วว่า set-returning function ธรรมดาถูกตัดที่ 1,000)
+และ `interpretRegisterResult()` ตัดสินว่า "ครบ" เมื่อได้แถว = `min(total_count, เพดาน)`
+"ถูกตัด" เมื่อ `total_count > เพดาน` และ **throw** เมื่อจำนวนแถวไม่ตรงทั้งสองกรณี (ชั้นใดตัดแถวเงียบ ๆ)
+(ข้อค้นพบ F-01: วิธีเดิมขอ `limit + 1` แล้วเดา พลาดที่ 5,001 แถวเพราะ SQL clamp ที่ 5,000)
+เมื่อถูกตัด **หน้าจอ
 ไม่แสดงยอดรวมเลย** เพราะยอดรวมของข้อมูลที่ไม่ครบซึ่งติดป้ายว่า "ยอดรวม"
 คือคำตอบที่ผิดและน่าเชื่อ ซึ่งอันตรายกว่าการไม่มีตัวเลขให้ดู
 

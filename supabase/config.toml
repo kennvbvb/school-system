@@ -7,6 +7,8 @@ enabled = true
 port = 54321
 schemas = ["public"]
 extra_search_path = ["public", "extensions"]
+# PostgREST ตัดจำนวนแถวของ set-returning function ที่เพดานนี้ก่อนถึงแอป — ห้ามใช้จำนวนแถวที่ได้
+# ตัดสินว่า "ครบ" ทะเบียนจึงคืน jsonb ค่าเดียว { total_count, rows } (ดู migration 20261006000200)
 max_rows = 1000
 
 [db]
