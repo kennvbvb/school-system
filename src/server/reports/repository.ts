@@ -1,6 +1,7 @@
 import 'server-only';
 import { createSupabaseServerClient } from '@/server/supabase/server-client';
 import { decimalStringToSatang } from '@/domain/money/money';
+import { interpretRegisterResult, REGISTER_SQL_MAX_ROWS } from '@/domain/reports/register-result';
 import type { BudgetReportRow } from '@/domain/budget/report';
 import type { BudgetReportFilter } from '@/domain/budget/report-schemas';
 import type { ProcurementStatus } from '@/domain/procurement/status';
@@ -138,17 +139,17 @@ export const REGISTER_ROW_LIMIT = 1000;
 /**
  * เพดานแถวเมื่อส่งออกเป็นไฟล์ — สูงกว่าเพดานหน้าจอ (REGISTER_ROW_LIMIT) เพราะ
  * การส่งออกทะเบียนไม่มีแถวยอดรวมสังเคราะห์ให้ต้องกังวลเรื่องยอดไม่ตรงกับแถว
- * ที่ถูกตัด (ดู src/features/reports/export-columns.ts) จึงไม่ต้องใช้เพดาน
- * เดียวกับหน้าจอที่ต้องซ่อนยอดรวมเมื่อข้อมูลถูกตัด
+ * ที่ถูกตัด (ดู src/features/reports/export-columns.ts)
  *
- * ตั้งไว้เท่ากับเพดานสูงสุดที่ตัว SQL function เองยอมรับจริง (ดู
- * `least(greatest(coalesce(p_limit, 1000), 1), 5000)` ใน migration
- * 20260920000100_procurement_register.sql) — ส่งค่าที่สูงกว่านี้ไปก็ไม่มีผล
- * เพราะฐานข้อมูลจะ clamp ให้เองอยู่ดี ถ้าโรงเรียนมีทะเบียนต่อปีงบเกิน 5,000
- * รายการจริง ต้องทำ keyset pagination/streaming เพิ่มซึ่งยังไม่ได้ทำในรอบนี้
- * (ดู docs/assumptions.md)
+ * ต้องไม่เกิน REGISTER_SQL_MAX_ROWS (5,000) ที่ฟังก์ชัน SQL ยอมคืน — แต่เพดานนี้
+ * **ไม่ใช่ตัวตัดสินว่าครบหรือไม่** แล้ว: ฐานข้อมูลคืน total_count ใน snapshot เดียวกับแถว
+ * (procurement_register_result) และ interpretRegisterResult เทียบสองค่านี้ จึงตรวจพบทั้ง
+ * กรณีเกินเพดานพอดี 1 แถว (F-01) และกรณีที่ชั้นใดตัดแถวเงียบ ๆ เช่น PostgREST max_rows
+ * ถ้าโรงเรียนมีทะเบียนต่อปีงบเกิน 5,000 รายการจริง ต้องทำ keyset pagination/streaming
+ * เพิ่มซึ่งยังไม่ได้ทำในรอบนี้ (ดู docs/assumptions.md) — ระหว่างนี้ export จะปฏิเสธ
+ * ไม่ส่งไฟล์ที่ไม่ครบ
  */
-export const REGISTER_EXPORT_ROW_LIMIT = 5000;
+export const REGISTER_EXPORT_ROW_LIMIT = REGISTER_SQL_MAX_ROWS;
 
 interface RegisterDbRow {
   procurement_id: string;
@@ -181,9 +182,10 @@ export interface ProcurementRegisterResult {
 /**
  * อ่านทะเบียนตามตัวกรอง พร้อมบอกว่าถูกตัดแถวหรือไม่
  *
- * ขอเกินเพดานหนึ่งแถวเพื่อให้รู้ว่ามีแถวที่ถูกตัดจริง — วิธีนับจำนวนทั้งหมด
- * ด้วย query แยกจะบอกได้เหมือนกัน แต่เป็นการอ่านสองครั้งที่อาจเห็นข้อมูลคนละ
- * ช่วงเวลา ทำให้หน้าจอบอกว่า "ครบแล้ว" ทั้งที่เพิ่งมีแถวใหม่เข้ามา
+ * เรียก `procurement_register_result` ซึ่งคืน jsonb ค่าเดียว `{ total_count, rows }`
+ * จาก statement เดียว — ค่าเดียวจึงไม่ถูก PostgREST `max_rows` ตัด และ total_count
+ * กับแถวมาจาก snapshot เดียวกัน (ต่างจากการนับด้วย query แยกที่อาจเห็นข้อมูลคนละช่วงเวลา)
+ * interpretRegisterResult ตัดสินว่าครบ/ถูกตัด และ **throw** ถ้าจำนวนแถวไม่ตรงที่ควรได้
  *
  * เรียกผ่าน client ของผู้ใช้ และ function เป็น security invoker — **RLS ของ
  * public.procurements เป็นตัวกำหนดขอบเขตแถวจริง** ผู้ที่มีเพียง
@@ -197,23 +199,22 @@ export async function loadProcurementRegister(
 ): Promise<ProcurementRegisterResult> {
   const supabase = await createSupabaseServerClient();
 
-  const { data, error } = await supabase.rpc('procurement_register_rows', {
+  const { data, error } = await supabase.rpc('procurement_register_result', {
     p_fiscal_year_id: filter.fiscalYearId ?? null,
     p_classification: filter.classification ?? null,
     p_status: filter.status ?? null,
     p_date_from: filter.dateFrom ?? null,
     p_date_to: filter.dateTo ?? null,
-    p_limit: rowLimit + 1,
+    p_limit: rowLimit,
   });
 
   if (error) throw new Error(error.message);
 
-  const dbRows = (data ?? []) as RegisterDbRow[];
-  const truncated = dbRows.length > rowLimit;
+  const { rows: dbRows, truncated } = interpretRegisterResult<RegisterDbRow>(data, rowLimit);
 
   return {
     truncated,
-    rows: dbRows.slice(0, rowLimit).map((row) => ({
+    rows: dbRows.map((row) => ({
       procurementId: row.procurement_id,
       reference: row.reference,
       subject: row.subject,
