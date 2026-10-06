@@ -137,6 +137,19 @@ describe('เบิกเกินยอดคงเหลือต้องถ�
   });
 });
 
+describe('รับเข้าครั้งแรกจากศูนย์ (ไม่บังคับยอดยกมา)', () => {
+  it('รายการที่ยังไม่มีรายการเลยรับเข้าแล้วเบิกได้ ยอดคิดจากศูนย์', () => {
+    const receipt = move('RECEIPT', '7');
+    expect(stockBalanceAfter([], receipt)).toBe(decimalStringToQuantityUnits('7'));
+    expect(() => assertStockMovementShapeValid(receipt, [])).not.toThrow();
+    expect(() => assertSufficientStock([receipt], move('ISSUE', '5'))).not.toThrow();
+  });
+
+  it('เบิกจากรายการที่ยังว่างอยู่ถูกปฏิเสธ', () => {
+    expect(() => assertSufficientStock([], move('ISSUE', '1'))).toThrow(StockMovementError);
+  });
+});
+
 describe('ความถูกต้องเชิงรูปแบบของแถว', () => {
   it('จำนวนต้องเป็นบวก', () => {
     expect(() =>
@@ -186,6 +199,17 @@ describe('ความถูกต้องเชิงรูปแบบขอ�
         firstReversal,
       ]),
     ).toThrow(/ถูกย้อนไปแล้ว/);
+  });
+
+  it('ย้อนด้วยจำนวนไม่ตรงต้นทางไม่ได้ (ฐานข้อมูลตรวจซ้ำอีกชั้น)', () => {
+    const issue = move('ISSUE', '1', { id: 'c1', requestedBy: 'u1', approvedBy: 'u2' });
+
+    expect(() =>
+      assertStockMovementShapeValid(move('REVERSAL', '100', { reversesMovementId: 'c1' }), [issue]),
+    ).toThrow(/เท่ากับจำนวนของรายการต้นทาง/);
+    expect(() =>
+      assertStockMovementShapeValid(move('REVERSAL', '1', { reversesMovementId: 'c1' }), [issue]),
+    ).not.toThrow();
   });
 
   it('ย้อนรายการย้อนอีกชั้นไม่ได้', () => {

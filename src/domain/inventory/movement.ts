@@ -79,6 +79,7 @@ export class StockMovementError extends Error {
     | 'REVERSAL_TARGET_REQUIRED'
     | 'REVERSAL_TARGET_UNKNOWN'
     | 'REVERSAL_OF_REVERSAL'
+    | 'REVERSAL_QUANTITY_MISMATCH'
     | 'REVERSAL_ALREADY_DONE'
     | 'ISSUE_ACTORS_REQUIRED'
     | 'ADJUSTMENT_REASON_REQUIRED'
@@ -226,6 +227,14 @@ export function assertStockMovementShapeValid(
     const target = existing.find((row) => row.id === movement.reversesMovementId);
     if (target && target.type === 'REVERSAL') {
       throw new StockMovementError('REVERSAL_OF_REVERSAL', 'ย้อนรายการย้อนอีกชั้นไม่ได้');
+    }
+
+    // ฐานข้อมูลตรวจเรื่องเดียวกันนี้อีกชั้น (F-02) — ตรวจที่นี่เพื่อให้ผู้ใช้ได้ข้อความก่อนส่ง
+    if (target && target.quantityUnits !== movement.quantityUnits) {
+      throw new StockMovementError(
+        'REVERSAL_QUANTITY_MISMATCH',
+        'จำนวนที่ย้อนต้องเท่ากับจำนวนของรายการต้นทาง',
+      );
     }
 
     const alreadyReversed = existing.some(
