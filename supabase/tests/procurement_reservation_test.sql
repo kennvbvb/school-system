@@ -51,7 +51,7 @@ begin
 end; $$;
 
 create or replace function pg_temp.available(p_account uuid)
-returns numeric language sql as $$ select public.budget_available(p_account); $$;
+returns numeric language sql security definer as $$ select public.budget_available(p_account); $$;
 
 -- ---------------------------------------------------------------------------
 -- ผู้ใช้สมมติ

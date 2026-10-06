@@ -50,7 +50,7 @@ begin
 end; $$;
 
 create or replace function pg_temp.available(p_account uuid)
-returns numeric language sql as $$ select public.budget_available(p_account); $$;
+returns numeric language sql security definer as $$ select public.budget_available(p_account); $$;
 
 create or replace function pg_temp.bal(p_account uuid, p_field text)
 returns numeric language plpgsql as $$

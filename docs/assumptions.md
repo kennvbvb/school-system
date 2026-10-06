@@ -629,6 +629,16 @@ test บน PostgreSQL จริง — พิสูจน์ว่า insert �
 ปกติ) เพิ่ม step ใน `.github/workflows/ci.yml` ให้รันไฟล์นี้ต่อจาก
 `document_status_test.sql`
 
+**อัปเดต F-06/F-07 (migration `20261006000300`)** — ปิดช่องที่เหลือหลัง PR-S01:
+`record_audit_event()` ไม่รับ action/entity อิสระอีกต่อไป (ดู `docs/data-dictionary.md` หัวข้อ `audit_events`
+และ "view และฟังก์ชันอ่าน") การตัดสินใจที่ควรรู้: (1) ผมเลือก **ติดป้าย provenance** ว่าแถวไหนฐานข้อมูลยืนยันเอง
+(`DB_TRUSTED`) กับแอปรายงาน (`APP_REPORTED`) แทนการย้ายทุก audit ของ server action เข้า RPC ธุรกรรมในรอบเดียว
+— งานย้ายนั้นต่อกับ F-08 (บันทึกร่างแบบ atomic) ที่ต้องแตะ action เดียวกันอยู่แล้ว (2) รายการสิทธิ์ต่อคู่
+action/entity (`audit_reportable_permission`) ยึดตามที่ server action ตรวจก่อนเรียกจริงในโค้ดวันนี้ ถ้าเพิ่ม action
+ใหม่ต้องเพิ่มคู่ในฟังก์ชันนี้ด้วย มิฉะนั้นถูกปฏิเสธ (ตั้งใจให้ล้มดัง ไม่ใช่ปล่อยผ่านเงียบ) (3) `audit_events` **ไม่มี trigger กัน
+update/delete** (เอกสารเดิมบางจุดเขียนว่ามี) กันได้เฉพาะด้วยการเพิกถอน privilege จาก authenticated/anon — เจ้าของตาราง/
+service_role ยังแก้ได้ ควรพิจารณาเพิ่ม trigger เหมือน `stock_movements` เป็นงานแยก ไม่ได้ทำใน PR นี้
+
 **ยังไม่ได้รันบน PostgreSQL จริงในสภาพแวดล้อมที่พัฒนา PR นี้** เหตุผลเดียวกับ
 ข้อ 2.29 (ไม่มี Docker/Supabase CLI ในสภาพแวดล้อมนี้) — migration และ SQL test
 ผ่านการอ่านทวนมืออย่างละเอียดเทียบกับ `budget_ledger_rls.sql`/`audit_read_test.sql`

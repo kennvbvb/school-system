@@ -458,22 +458,21 @@ select pg_temp.assert_eq(
   2, 'ผู้ที่เข้าสู่ระบบแล้วเรียกได้ทั้งสองฟังก์ชัน');
 
 /*
- * แม้ `anon` จะเรียกฟังก์ชันได้ ก็ต้องไม่ได้ข้อมูลสักแถว
+ * `anon` (ผู้ที่ยังไม่เข้าสู่ระบบ) ต้องเรียกฟังก์ชันนี้ไม่ได้เลยที่ระดับสิทธิ์ (F-06)
  *
- * ให้ EXECUTE กับ `anon` ในทรานแซกชันนี้เองเพื่อจำลองสภาพของ Supabase จริง
- * ซึ่งให้สิทธิ์นั้นเป็นค่าเริ่มต้นกับฟังก์ชันใน schema public — grant นี้ย้อนกลับ
- * พร้อม rollback ท้ายไฟล์ ข้อนี้จึงให้คำตอบเดียวกันทั้งบน harness และบน CI
- *
- * สิ่งที่กันจริงคือ RLS ของ document_numbers ซึ่งเป็น `to authenticated`
- * ไม่ใช่ grant ระดับฟังก์ชัน
+ * Supabase ให้ EXECUTE กับ `anon` เป็นค่าเริ่มต้นกับฟังก์ชันใน schema public — migration
+ * 20261006000300 เพิกถอนจาก anon/PUBLIC ทั้งหมดและ view_read_boundary_test.sql ตรวจทั้ง schema
+ * ข้อนี้ยืนยันเฉพาะฟังก์ชันนี้ (RLS แบบ `to authenticated` ยังเป็นด่านชั้นสอง)
  */
-grant execute on function public.document_sequence_rows(uuid, public.document_kind) to anon;
-
 set local role anon;
 
-select pg_temp.assert_eq(
-  (select count(*)::integer from public.document_sequence_rows()),
-  0, 'ผู้ที่ยังไม่เข้าสู่ระบบไม่ได้ข้อมูลสักแถว');
+do $$
+begin
+  perform public.document_sequence_rows();
+  raise exception 'FAIL anon เรียก document_sequence_rows สำเร็จ';
+exception when insufficient_privilege then
+  raise notice 'ok   ผู้ที่ยังไม่เข้าสู่ระบบเรียกฟังก์ชันนี้ไม่ได้เลย (F-06: เพิกถอน execute จาก anon)';
+end $$;
 
 reset role;
 

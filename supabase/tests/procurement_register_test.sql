@@ -532,25 +532,21 @@ select pg_temp.assert_eq(
   true, 'ผู้ที่เข้าสู่ระบบแล้วเรียกฟังก์ชันนี้ได้');
 
 /*
- * แม้ `anon` จะเรียกฟังก์ชันได้ ก็ต้องไม่ได้ข้อมูลสักแถว
+ * `anon` (ผู้ที่ยังไม่เข้าสู่ระบบ) ต้องเรียกฟังก์ชันนี้ไม่ได้เลยที่ระดับสิทธิ์ (F-06)
  *
- * ให้ EXECUTE กับ `anon` ในทรานแซกชันนี้เองเพื่อจำลองสภาพของ Supabase จริง
- * และเพื่อให้ข้อนี้ให้คำตอบเดียวกันทั้งบน harness และบน CI — grant นี้ย้อนกลับ
- * พร้อม rollback ท้ายไฟล์ จึงไม่ค้างอยู่ในฐานข้อมูล
- *
- * ข้อนี้พิสูจน์ว่า **grant ไม่ใช่ด่านที่กัน** — policy ของ procurements เป็น
- * `to authenticated` ทั้งหมด ผู้เรียกที่ไม่ใช่ role นั้นจึงไม่เข้าเงื่อนไขใดเลย
- * แม้จะมี JWT ของผู้ใช้จริงค้างอยู่ใน session ก็ตาม (ตั้งไว้ตั้งแต่ข้อก่อนหน้า)
+ * Supabase ให้ EXECUTE กับ `anon` เป็นค่าเริ่มต้นกับฟังก์ชันใน schema public — migration
+ * 20261006000300 เพิกถอนจาก anon/PUBLIC ทั้งหมดและ view_read_boundary_test.sql ตรวจทั้ง schema
+ * ข้อนี้ยืนยันเฉพาะฟังก์ชันนี้ (RLS แบบ `to authenticated` ยังเป็นด่านชั้นสอง)
  */
-grant execute on function public.procurement_register_rows(
-  uuid, public.procurement_classification, public.procurement_status, date, date, integer
-) to anon;
-
 set local role anon;
 
-select pg_temp.assert_eq(
-  (select count(*)::integer from public.procurement_register_rows()),
-  0, 'ผู้ที่ยังไม่เข้าสู่ระบบไม่ได้ข้อมูลสักแถว');
+do $$
+begin
+  perform * from public.procurement_register_rows();
+  raise exception 'FAIL anon เรียก procurement_register_rows สำเร็จ';
+exception when insufficient_privilege then
+  raise notice 'ok   ผู้ที่ยังไม่เข้าสู่ระบบเรียกฟังก์ชันนี้ไม่ได้เลย (F-06: เพิกถอน execute จาก anon)';
+end $$;
 
 reset role;
 
