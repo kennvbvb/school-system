@@ -529,6 +529,10 @@ append-only เหมือน `audit_events` และ `budget_movements` — �
 ผู้ดูแลไม่ได้ตั้งและไม่ได้รู้รหัสผ่านของใคร ไม่มี schema ใดในระบบรับช่องรหัสผ่าน
 (ข้อ 14.2 — ห้ามให้รหัสผ่านไหลผ่าน server action ที่อาจถูกบันทึกลง log)
 
+หน้า `/reset-password` (ผู้ถูกเชิญและผู้ลืมรหัสผ่าน) เรียก `supabase.auth.updateUser()` จาก **เบราว์เซอร์ตรง**
+รหัสผ่านจึงไม่ผ่าน server action ใดของเรา สิ่งเดียวที่ server action รับรู้คือ "ตั้งรหัสผ่านแล้ว"
+(`recordPasswordSet()` บันทึก audit รหัส `auth.password_set` โดยไม่มีค่าใด ๆ ของรหัสผ่าน)
+
 ---
 
 ## `procurement_disbursements` — การเบิกจ่าย (PR-04d)

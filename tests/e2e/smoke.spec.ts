@@ -181,3 +181,50 @@ test('ตัวกรองในรายงานสถานะเอกส�
   );
   await expect(page).toHaveURL(/\/login\?returnTo=/);
 });
+
+test('หน้าเข้าสู่ระบบมีลิงก์ลืมรหัสผ่าน (FR-AUTH-003)', async ({ page }) => {
+  await page.goto('/login');
+  await page.getByRole('link', { name: 'ลืมรหัสผ่าน?' }).click();
+
+  await expect(page).toHaveURL(/\/forgot-password$/);
+  await expect(page.getByRole('heading', { name: 'ลืมรหัสผ่าน' })).toBeVisible();
+  await expect(page.getByLabel('อีเมล')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'ส่งลิงก์ตั้งรหัสผ่านใหม่' })).toBeVisible();
+  // ยังไม่มีช่องทางสมัครสมาชิกแม้เพิ่มหน้ารีเซ็ตรหัสผ่านแล้ว
+  await expect(page.getByRole('link', { name: /สมัคร|ลงทะเบียน|register|sign ?up/i })).toHaveCount(
+    0,
+  );
+});
+
+test('หน้าตั้งรหัสผ่านที่เปิดตรง ๆ โดยไม่มีลิงก์จากอีเมล ไม่แสดงฟอร์ม', async ({ page }) => {
+  await page.goto('/reset-password');
+
+  // Next.js มี role=alert ของตัวเอง (route announcer) จึงต้องกรองด้วยข้อความ
+  await expect(page.getByRole('alert').filter({ hasText: 'ลิงก์ไม่ถูกต้อง' })).toBeVisible();
+  await expect(page.getByLabel('รหัสผ่านใหม่')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'หน้าลืมรหัสผ่าน' })).toBeVisible();
+});
+
+test('ลิงก์ที่หมดอายุ (error ใน hash) แจ้งตรง ๆ และล้าง hash ออกจาก URL', async ({ page }) => {
+  await page.goto('/reset-password#error=access_denied&error_code=otp_expired');
+
+  await expect(
+    page.getByRole('alert').filter({ hasText: 'ลิงก์หมดอายุหรือถูกใช้ไปแล้ว' }),
+  ).toBeVisible();
+  expect(new URL(page.url()).hash).toBe('');
+});
+
+test('/auth/callback ที่ไม่มี code พาไปขอลิงก์ใหม่ โดยไม่รับปลายทางจาก query', async ({ page }) => {
+  await page.goto('/auth/callback?next=https://evil.example.com');
+
+  await expect(page).toHaveURL(/\/forgot-password\?error=link$/);
+  await expect(page.getByRole('alert').filter({ hasText: 'ลิงก์ไม่ถูกต้อง' })).toBeVisible();
+});
+
+test('หน้ารีเซ็ตรหัสผ่านไม่ให้เครื่องมือค้นหาจัดทำดัชนี (URL อาจมี token ชั่วคราว)', async ({
+  page,
+}) => {
+  await page.goto('/reset-password');
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /noindex/);
+  await expect(page.locator('meta[name="referrer"]')).toHaveAttribute('content', 'no-referrer');
+});
