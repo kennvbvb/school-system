@@ -7,6 +7,8 @@ import { createSupabaseServerClient } from '@/server/supabase/server-client';
 import { createSupabaseAdminClient } from '@/server/supabase/admin-client';
 import { recordAuditEvent } from '@/server/audit/audit-log';
 import { REQUEST_ID_HEADER, generateRequestId, sanitizeRequestId } from '@/lib/request-id';
+import { getServerEnv } from '@/lib/env/server';
+import { RESET_PASSWORD_PATH, joinAppUrl } from '@/domain/auth/auth-link';
 import {
   userActiveSchema,
   userInviteSchema,
@@ -83,7 +85,15 @@ export async function inviteUser(input: unknown): Promise<ActionResult<string>> 
       };
     }
 
-    const invited = await admin.auth.admin.inviteUserByEmail(email);
+    /*
+     * redirectTo พาผู้ถูกเชิญมาหน้าตั้งรหัสผ่านของเราเอง — ถ้าไม่ระบุ Supabase จะพาไปที่ Site URL
+     * ซึ่งไม่มีอะไรรับ token แล้วผู้ถูกเชิญตั้งรหัสผ่านไม่ได้เลย
+     * URL นี้ต้องอยู่ในรายการ Redirect URLs ของ Supabase (ดู docs/setup-supabase-vercel.md ขั้น 4.1)
+     * ถ้าไม่อยู่ Supabase จะเมินค่านี้เงียบ ๆ แล้วใช้ Site URL แทน
+     */
+    const invited = await admin.auth.admin.inviteUserByEmail(email, {
+      redirectTo: joinAppUrl(getServerEnv().NEXT_PUBLIC_APP_URL, RESET_PASSWORD_PATH),
+    });
 
     if (invited.error || !invited.data.user) {
       /*

@@ -31,6 +31,7 @@ export type AuditAction =
   | 'auth.login'
   | 'auth.login_failed'
   | 'auth.logout'
+  | 'auth.password_set'
   | 'entity.create'
   | 'entity.update'
   | 'entity.delete'

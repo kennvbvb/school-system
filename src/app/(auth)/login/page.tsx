@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { LoginForm } from '@/features/auth/login-form';
 import { getCurrentUser } from '@/server/auth/session';
@@ -32,6 +33,12 @@ export default async function LoginPage({
       </header>
 
       <LoginForm returnTo={returnTo} />
+
+      <p className="text-sm">
+        <Link href="/forgot-password" className="text-brand-700 underline">
+          ลืมรหัสผ่าน?
+        </Link>
+      </p>
 
       <p className="text-sm text-slate-600">
         ระบบนี้ไม่เปิดให้สมัครสมาชิกเอง หากยังไม่มีบัญชีหรือเข้าใช้งานไม่ได้

@@ -22,6 +22,7 @@ export const AUDIT_ACTION_LABELS_TH: Record<AuditAction, string> = {
   'auth.login': 'เข้าสู่ระบบ',
   'auth.login_failed': 'เข้าสู่ระบบไม่สำเร็จ',
   'auth.logout': 'ออกจากระบบ',
+  'auth.password_set': 'ตั้ง/เปลี่ยนรหัสผ่าน',
   'entity.create': 'สร้างข้อมูล',
   'entity.update': 'แก้ไขข้อมูล',
   'entity.delete': 'ลบข้อมูล',
@@ -41,7 +42,7 @@ export const AUDIT_ACTION_LABELS_TH: Record<AuditAction, string> = {
  * กลุ่มของ action สำหรับตัวกรอง
  *
  * ผู้ตรวจสอบมักถามเป็นหัวข้อ ("ใครแตะสิทธิ์บ้างเดือนนี้") ไม่ใช่เป็นรหัสทีละตัว
- * การให้เลือกทีละรหัสจาก 16 ตัวทำให้พลาดตัวที่เกี่ยวข้องได้ง่าย
+ * การให้เลือกทีละรหัสจาก 17 ตัวทำให้พลาดตัวที่เกี่ยวข้องได้ง่าย
  */
 export const AUDIT_GROUPS = ['ALL', 'SECURITY', 'MONEY', 'DOCUMENT', 'DATA'] as const;
 
@@ -60,6 +61,7 @@ const GROUP_MEMBERS: Record<Exclude<AuditGroup, 'ALL'>, readonly AuditAction[]> 
     'auth.login',
     'auth.login_failed',
     'auth.logout',
+    'auth.password_set',
     'user.invite',
     'user.roles_change',
     'user.active_change',
