@@ -172,6 +172,12 @@ jobs:
         # เพราะ SQL clamp ที่ 5,000 (ชั้น HTTP/PostgREST max_rows พิสูจน์ใน job register-http)
         run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/procurement_register_completeness_test.sql
 
+      - name: ทดสอบ ledger คลังพัสดุบนฐานข้อมูลจริง รวมลงรายการพร้อมกัน (F-02/F-03/F-04)
+        # ลำดับ ledger มาจาก sequence_no ไม่ใช่ now()/UUID, ย้อนรายการต้องตรงต้นทางทั้งรายการและจำนวน
+        # (ตรวจในฐานข้อมูล ไม่ใช่แค่ server action), รับเข้าครั้งแรกจากศูนย์ได้โดยไม่ต้องมียอดยกมา
+        # และคำขอพร้อมกันหลาย session ต้องไม่ทำให้ลำดับชนหรือยอดติดลบ
+        run: supabase/tests/run-inventory-tests.sh "$DB_URL"
+
   register-http:
     name: Register completeness through PostgREST
     runs-on: ubuntu-latest
