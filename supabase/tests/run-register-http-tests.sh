@@ -26,8 +26,20 @@ REST_URL="${REST_URL:-$API_URL/rest/v1}"
 
 fail() { echo "FAIL $1"; exit 1; }
 
+# curl ที่แสดง body เมื่อ HTTP ล้ม (curl -f ซ่อนสาเหตุจาก GoTrue/PostgREST ไว้หมด)
+api() {
+  local out status
+  out="$(mktemp)"
+  status="$(curl -sS -o "$out" -w '%{http_code}' "$@")" || { cat "$out"; fail "curl ล้ม"; }
+  if [ "${status:0:1}" != "2" ]; then
+    echo "HTTP $status จาก: ${*: -1}"; cat "$out"; echo
+    fail "คำขอ HTTP ไม่สำเร็จ ($status)"
+  fi
+  cat "$out"
+}
+
 OFFICER_ID="c4111111-1111-4111-8111-111111111111"
-OFFICER_EMAIL="regh-officer@example.test"
+OFFICER_EMAIL="regh-officer@example.com"
 OFFICER_PASSWORD="regh-test-password-$(date +%s)"
 
 echo "== เตรียมข้อมูลทดสอบ =="
@@ -39,19 +51,19 @@ if [ -z "${ACCESS_TOKEN:-}" ]; then
   existing="$(psql "$DB_URL" -t -A -c "select id from auth.users where email = '$OFFICER_EMAIL'")"
   if [ -n "$existing" ]; then
     OFFICER_ID="$existing"
-    curl -sS -f -X PUT "$API_URL/auth/v1/admin/users/$OFFICER_ID" \
+    api -X PUT "$API_URL/auth/v1/admin/users/$OFFICER_ID" \
       -H "apikey: $SERVICE_ROLE_KEY" -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
       -H 'Content-Type: application/json' \
       -d "{\"password\": \"$OFFICER_PASSWORD\"}" > /dev/null
   else
-    created="$(curl -sS -f -X POST "$API_URL/auth/v1/admin/users" \
+    created="$(api -X POST "$API_URL/auth/v1/admin/users" \
       -H "apikey: $SERVICE_ROLE_KEY" -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
       -H 'Content-Type: application/json' \
       -d "{\"email\": \"$OFFICER_EMAIL\", \"password\": \"$OFFICER_PASSWORD\", \"email_confirm\": true}")"
     OFFICER_ID="$(echo "$created" | jq -r '.id')"
   fi
 
-  ACCESS_TOKEN="$(curl -sS -f -X POST "$API_URL/auth/v1/token?grant_type=password" \
+  ACCESS_TOKEN="$(api -X POST "$API_URL/auth/v1/token?grant_type=password" \
     -H "apikey: $ANON_KEY" -H 'Content-Type: application/json' \
     -d "{\"email\": \"$OFFICER_EMAIL\", \"password\": \"$OFFICER_PASSWORD\"}" | jq -r '.access_token')"
   [ -n "$ACCESS_TOKEN" ] && [ "$ACCESS_TOKEN" != "null" ] || fail "sign in ไม่ได้ access token"
@@ -94,7 +106,7 @@ analyze public.procurements;
 SQL
 
 call_rpc() { # day limit
-  curl -sS -f -X POST "$REST_URL/rpc/procurement_register_result" \
+  api -X POST "$REST_URL/rpc/procurement_register_result" \
     -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ACCESS_TOKEN" \
     -H 'Content-Type: application/json' \
     -d "{\"p_date_from\": \"$1\", \"p_date_to\": \"$1\", \"p_limit\": $2}"
@@ -137,7 +149,7 @@ echo "ok   [1987-02-03 limit=5001] clamp เหลือ 5000 แต่ total_co
 
 # บันทึกพฤติกรรม max_rows ของสภาพแวดล้อมนี้ไว้ในล็อก (ไม่ใช่เงื่อนไขผ่าน/ล้ม — ค่านี้เปลี่ยนได้)
 # เพื่อให้เห็นว่า set-returning function ธรรมดาถูกตัดจริงหรือไม่ ขณะที่ jsonb ครบทุกแถว
-plain="$(curl -sS -f -X POST "$REST_URL/rpc/procurement_register_rows" \
+plain="$(api -X POST "$REST_URL/rpc/procurement_register_rows" \
   -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ACCESS_TOKEN" -H 'Content-Type: application/json' \
   -d '{"p_date_from": "1987-02-02", "p_date_to": "1987-02-02", "p_limit": 5000}' | jq 'length')"
 echo "info procurement_register_rows ผ่าน PostgREST ขอ 5000 แถว (มี 5000) ได้ $plain แถว — ถ้าน้อยกว่า 5000 แปลว่า max_rows ตัดจริง"
