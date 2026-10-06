@@ -24,15 +24,15 @@ SERVICE_ROLE_KEY="${4:-}"
 # Supabase เปิด PostgREST ที่ /rest/v1 — ตั้ง REST_URL เองได้เมื่อรัน PostgREST ตรง ๆ ไม่ผ่าน gateway
 REST_URL="${REST_URL:-$API_URL/rest/v1}"
 
-fail() { echo "FAIL $1"; exit 1; }
+fail() { echo "FAIL $1" >&2; exit 1; }
 
 # curl ที่แสดง body เมื่อ HTTP ล้ม (curl -f ซ่อนสาเหตุจาก GoTrue/PostgREST ไว้หมด)
 api() {
   local out status
   out="$(mktemp)"
-  status="$(curl -sS -o "$out" -w '%{http_code}' "$@")" || { cat "$out"; fail "curl ล้ม"; }
+  status="$(curl -sS -o "$out" -w '%{http_code}' "$@")" || { cat "$out" >&2; fail "curl ล้ม"; }
   if [ "${status:0:1}" != "2" ]; then
-    echo "HTTP $status จาก: ${*: -1}"; cat "$out"; echo
+    { echo "HTTP $status จาก: ${*: -1}"; cat "$out"; echo; } >&2
     fail "คำขอ HTTP ไม่สำเร็จ ($status)"
   fi
   cat "$out"
