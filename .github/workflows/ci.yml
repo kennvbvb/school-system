@@ -194,6 +194,11 @@ jobs:
         # ชั้น HTTP ต้องมี PostgREST/GoTrue/gateway จริง — `supabase db start` ในอีก job มีแต่ฐานข้อมูล
         # max_rows ของ PostgREST (config.toml = 1,000) ตัดแถวก่อนถึงแอป SQL ตรง ๆ จึงไม่เห็นเพดานนี้
         run: |
+          # config.toml ตั้ง [auth.email] enable_signup = false ซึ่ง Supabase CLI แปลเป็น "ปิดผู้ให้บริการอีเมลทั้งหมด"
+          # (GoTrue ตอบ email_provider_disabled: Email logins are disabled) ทำให้ผู้ใช้ทดสอบ sign in
+          # ด้วยรหัสผ่านไม่ได้ — เปิดเฉพาะสำเนาใน runner นี้ ไม่แก้ไฟล์ใน repo; การสมัครสาธารณะยังปิดด้วย [auth] enable_signup = false
+          sed -i '/^\[auth\.email\]/,/^$/ s/^enable_signup = false/enable_signup = true/' supabase/config.toml
+          grep -A1 '^\[auth\.email\]' supabase/config.toml
           supabase start
           supabase status -o env > "$RUNNER_TEMP/supabase.env"
           for key in API_URL DB_URL ANON_KEY SERVICE_ROLE_KEY; do
