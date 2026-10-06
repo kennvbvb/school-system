@@ -37,24 +37,22 @@ const TYPE_OPTIONS = RECEIVE_MOVEMENT_TYPES.map((type) => ({
 export function ReceiveForm({
   itemId,
   defaultDate,
-  hasOpeningBalance,
+  hasMovements,
   action,
 }: {
   itemId: string;
   defaultDate: string;
-  /** true = รายการนี้มีรายการเคลื่อนไหวแล้ว จึงลงยอดยกมาซ้ำไม่ได้ */
-  hasOpeningBalance: boolean;
+  /** true = รายการนี้มีรายการเคลื่อนไหวแล้ว จึงลงยอดยกมาไม่ได้ (รับเข้าจากยอด 0 ได้เสมอ ไม่ต้องมียอดยกมา) */
+  hasMovements: boolean;
   action: (values: ReceiveFormValues) => Promise<ActionOutcome>;
 }) {
-  const [type, setType] = useState<ReceiveMovementType>(
-    hasOpeningBalance ? 'RECEIPT' : 'OPENING_BALANCE',
-  );
+  const [type, setType] = useState<ReceiveMovementType>('RECEIPT');
   const [quantity, setQuantity] = useState('');
   const [effectiveDate, setEffectiveDate] = useState(defaultDate);
   const [reference, setReference] = useState('');
   const [reason, setReason] = useState('');
 
-  const typeOptions = hasOpeningBalance
+  const typeOptions = hasMovements
     ? TYPE_OPTIONS.filter((option) => option.id !== 'OPENING_BALANCE')
     : TYPE_OPTIONS;
 

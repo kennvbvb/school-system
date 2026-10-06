@@ -57,7 +57,7 @@ export default async function InventoryItemPage({ params }: { params: Promise<{ 
   ]);
 
   const today = toBangkokDateString(new Date());
-  const hasOpeningBalance = movements.length > 0;
+  const hasMovements = movements.length > 0;
   const isActive = item.status === 'ACTIVE';
 
   return (
@@ -133,7 +133,7 @@ export default async function InventoryItemPage({ params }: { params: Promise<{ 
               <ReceiveForm
                 itemId={item.id}
                 defaultDate={today}
-                hasOpeningBalance={hasOpeningBalance}
+                hasMovements={hasMovements}
                 action={receiveStock}
               />
             </section>
@@ -147,16 +147,7 @@ export default async function InventoryItemPage({ params }: { params: Promise<{ 
               <h2 id="issue-heading" className="mb-4 text-lg font-semibold">
                 เบิกจ่าย
               </h2>
-              {hasOpeningBalance ? (
-                <IssueForm
-                  itemId={item.id}
-                  defaultDate={today}
-                  actors={actors}
-                  action={issueStock}
-                />
-              ) : (
-                <p className="text-sm text-slate-600">ต้องลงยอดยกมาก่อนจึงจะเบิกจ่ายได้</p>
-              )}
+              <IssueForm itemId={item.id} defaultDate={today} actors={actors} action={issueStock} />
             </section>
           ) : null}
 
@@ -168,16 +159,12 @@ export default async function InventoryItemPage({ params }: { params: Promise<{ 
               <h2 id="adjust-heading" className="mb-4 text-lg font-semibold">
                 ปรับยอด
               </h2>
-              {hasOpeningBalance ? (
-                <AdjustmentForm
-                  itemId={item.id}
-                  defaultDate={today}
-                  actors={actors}
-                  action={adjustStock}
-                />
-              ) : (
-                <p className="text-sm text-slate-600">ต้องลงยอดยกมาก่อนจึงจะปรับยอดได้</p>
-              )}
+              <AdjustmentForm
+                itemId={item.id}
+                defaultDate={today}
+                actors={actors}
+                action={adjustStock}
+              />
             </section>
           ) : null}
         </div>
@@ -190,7 +177,7 @@ export default async function InventoryItemPage({ params }: { params: Promise<{ 
 
         {movements.length === 0 ? (
           <p className="rounded-lg border border-slate-200 bg-white p-6 text-slate-700">
-            ยังไม่มีรายการเคลื่อนไหว — เริ่มด้วยการลงยอดยกมา
+            ยังไม่มีรายการเคลื่อนไหว — เริ่มด้วยการลงยอดยกมา หรือรับเข้าครั้งแรกได้เลย
           </p>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">

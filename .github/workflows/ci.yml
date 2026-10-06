@@ -167,6 +167,12 @@ jobs:
         # actor_id เป็นอีกคนได้ผ่าน Supabase REST API ตรง ข้าม Next.js ทั้งหมด
         run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/audit_trusted_rpc_test.sql
 
+      - name: ทดสอบ ledger คลังพัสดุบนฐานข้อมูลจริง รวมลงรายการพร้อมกัน (F-02/F-03/F-04)
+        # ลำดับ ledger มาจาก sequence_no ไม่ใช่ now()/UUID, ย้อนรายการต้องตรงต้นทางทั้งรายการและจำนวน
+        # (ตรวจในฐานข้อมูล ไม่ใช่แค่ server action), รับเข้าครั้งแรกจากศูนย์ได้โดยไม่ต้องมียอดยกมา
+        # และคำขอพร้อมกันหลาย session ต้องไม่ทำให้ลำดับชนหรือยอดติดลบ
+        run: supabase/tests/run-inventory-tests.sh "$DB_URL"
+
   e2e:
     name: End-to-end smoke tests
     runs-on: ubuntu-latest
