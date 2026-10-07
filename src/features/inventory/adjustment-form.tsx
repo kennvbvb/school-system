@@ -39,12 +39,12 @@ const TYPE_OPTIONS = ADJUSTMENT_MOVEMENT_TYPES.map((type) => ({
 export function AdjustmentForm({
   itemId,
   defaultDate,
-  actors,
+  approvers,
   action,
 }: {
   itemId: string;
   defaultDate: string;
-  actors: readonly SelectOption[];
+  approvers: readonly SelectOption[];
   action: (values: AdjustmentFormValues) => Promise<ActionOutcome>;
 }) {
   const [type, setType] = useState<AdjustmentMovementType>('ADJUSTMENT_INCREASE');
@@ -119,7 +119,7 @@ export function AdjustmentForm({
           required
           value={approvedBy}
           onChange={setApprovedBy}
-          options={actors}
+          options={approvers}
           error={form.fieldError('approvedBy')}
         />
         <TextAreaField

@@ -34,7 +34,7 @@ SQL
 # สุ่มจาก RUN_ID ในช่อง 2600–2699 (พ.ศ. → ค.ศ. 2057–2156) ชนกับรอบก่อนให้ลองใหม่
 FY=""
 for attempt in 1 2 3 4 5 6 7 8; do
-  YEAR_BE=$(( 2600 + (RUN_ID + attempt * 37) % 100 ))
+  YEAR_BE=$(( 2600 + (10#$RUN_ID + attempt * 37) % 100 ))
   CE=$(( YEAR_BE - 543 ))
   FY="$(psql "$DB_URL" -t -A -q -c "
     insert into public.fiscal_years (code, year_be, start_date, end_date, status)

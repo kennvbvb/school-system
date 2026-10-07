@@ -95,15 +95,21 @@ export type StockReceiveInput = z.infer<typeof stockReceiveSchema>;
 // เบิกจ่าย — ต้องมีทั้งผู้เบิกและผู้อนุมัติเสมอ
 // -----------------------------------------------------------------------------
 
-export const stockIssueSchema = z.object({
-  itemId: z.uuid({ message: 'กรุณาเลือกรายการพัสดุ' }),
-  quantity: positiveQuantitySchema,
-  effectiveDate: businessDateSchema,
-  reference: requiredText('เลขที่ใบเบิก'),
-  requestedBy: z.uuid({ message: 'กรุณาเลือกผู้เบิก' }),
-  approvedBy: z.uuid({ message: 'กรุณาเลือกผู้อนุมัติ' }),
-  reason: optionalText(),
-});
+export const stockIssueSchema = z
+  .object({
+    itemId: z.uuid({ message: 'กรุณาเลือกรายการพัสดุ' }),
+    quantity: positiveQuantitySchema,
+    effectiveDate: businessDateSchema,
+    reference: requiredText('เลขที่ใบเบิก'),
+    requestedBy: z.uuid({ message: 'กรุณาเลือกผู้เบิก' }),
+    approvedBy: z.uuid({ message: 'กรุณาเลือกผู้อนุมัติ' }),
+    reason: optionalText(),
+  })
+  // แยกหน้าที่: คนขอเบิกอนุมัติใบเบิกของตัวเองไม่ได้ (ฐานข้อมูลตรวจซ้ำใน stock_post_movement)
+  .refine((value) => value.requestedBy !== value.approvedBy, {
+    path: ['approvedBy'],
+    message: 'ผู้เบิกกับผู้อนุมัติต้องเป็นคนละคน',
+  });
 
 export type StockIssueInput = z.infer<typeof stockIssueSchema>;
 

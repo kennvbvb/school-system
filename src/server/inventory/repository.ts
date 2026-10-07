@@ -240,23 +240,41 @@ export async function loadInventoryItemOptions(): Promise<InventoryItemOptions> 
   };
 }
 
-/** ตัวเลือกผู้เบิก/ผู้อนุมัติ — ใช้ผู้ใช้ที่ active ทั้งหมด เหมือนตัวเลือกผู้ลงนามในเอกสารอื่น */
-export async function loadActorOptions(): Promise<{ id: string; label: string }[]> {
+export interface ActorOptions {
+  /** ผู้เบิกเลือกได้จากพนักงานที่ active ทั้งหมด */
+  requesters: { id: string; label: string }[];
+  /** ผู้อนุมัติเลือกได้เฉพาะผู้ถือ inventory.approve (ฐานข้อมูลตรวจซ้ำอีกชั้น) */
+  approvers: { id: string; label: string }[];
+}
+
+interface StaffDirectoryRow {
+  id: string;
+  display_name: string;
+  employee_code: string;
+  can_approve: boolean;
+}
+
+/*
+ * ตัวเลือกผู้เบิก/ผู้อนุมัติ — อ่านผ่าน RPC `inventory_staff_directory` เท่านั้น
+ * เพราะ RLS ของ profiles ให้ผู้ใช้ทั่วไปเห็นแค่ตัวเอง ไม่ใช่รายชื่อพนักงาน
+ * RPC คืนเฉพาะคอลัมน์ที่จำเป็น (ชื่อ รหัสพนักงาน และธงว่าอนุมัติได้) และต้องถือ
+ * inventory.issue หรือ inventory.adjust
+ */
+export async function loadActorOptions(): Promise<ActorOptions> {
   const supabase = await createSupabaseServerClient();
 
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('id, employee_code, first_name_th, last_name_th')
-    .eq('is_active', true)
-    .order('first_name_th')
-    .returns<
-      { id: string; employee_code: string; first_name_th: string; last_name_th: string }[]
-    >();
+  const { data, error } = await supabase.rpc('inventory_staff_directory');
 
   if (error) throw new Error(error.message);
 
-  return (data ?? []).map((row) => ({
+  const options = ((data ?? []) as StaffDirectoryRow[]).map((row) => ({
     id: row.id,
-    label: `${row.first_name_th} ${row.last_name_th} (${row.employee_code})`,
+    label: `${row.display_name} (${row.employee_code})`,
+    canApprove: row.can_approve,
   }));
+
+  return {
+    requesters: options.map(({ id, label }) => ({ id, label })),
+    approvers: options.filter((o) => o.canApprove).map(({ id, label }) => ({ id, label })),
+  };
 }

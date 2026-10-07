@@ -26,12 +26,14 @@ export interface IssueFormValues {
 export function IssueForm({
   itemId,
   defaultDate,
-  actors,
+  requesters,
+  approvers,
   action,
 }: {
   itemId: string;
   defaultDate: string;
-  actors: readonly SelectOption[];
+  requesters: readonly SelectOption[];
+  approvers: readonly SelectOption[];
   action: (values: IssueFormValues) => Promise<ActionOutcome>;
 }) {
   const [quantity, setQuantity] = useState('');
@@ -97,7 +99,7 @@ export function IssueForm({
           required
           value={requestedBy}
           onChange={setRequestedBy}
-          options={actors}
+          options={requesters}
           error={form.fieldError('requestedBy')}
         />
         <SelectField
@@ -105,7 +107,7 @@ export function IssueForm({
           required
           value={approvedBy}
           onChange={setApprovedBy}
-          options={actors}
+          options={approvers}
           error={form.fieldError('approvedBy')}
         />
         <TextAreaField

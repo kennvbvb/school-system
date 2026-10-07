@@ -31,6 +31,8 @@ export const PERMISSIONS = [
   'inventory.receive',
   'inventory.issue',
   'inventory.adjust',
+  /** อำนาจอนุมัติเบิกจ่าย/ปรับยอดคลัง — ผู้อนุมัติที่ระบุในรายการคลังต้องมีสิทธิ์นี้ (F-05) */
+  'inventory.approve',
   'assets.read',
   'assets.manage',
   'reports.export',
@@ -105,6 +107,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Readonly<Record<RoleCode, readonly Permis
     'procurement.approve',
     'procurement.override_validation',
     'budget.read',
+    'inventory.approve',
     'documents.preview',
   ],
   FINANCE: [
