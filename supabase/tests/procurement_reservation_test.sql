@@ -318,8 +318,9 @@ select pg_temp.assert_eq(
 set local request.jwt.claim.sub = 'f5555555-5555-4555-8555-555555555555';
 select pg_temp.act('faaaaaaa-0000-4000-8000-000000000002', 'cancel', 'คืนยอดแล้วทดสอบเส้นทางอื่น');
 
--- สร้างในฐานะผู้ขอ เพราะ RLS ของ procurements บังคับว่า created_by ต้องเป็นผู้สร้างจริง
-set local request.jwt.claim.sub = 'f1111111-1111-4111-8111-111111111111';
+-- เตรียมรายการทดสอบเป็นข้อมูลตั้งต้น (superuser) — ตาราง procurements ปิดการเขียนตรงจาก authenticated
+-- แล้ว (F-08) การสร้างจริงทดสอบใน procurement_draft_atomic_test.sql ที่นี่ทดสอบการกันยอดตอนอนุมัติ
+reset role;
 
 insert into public.procurements (
   id, subject, purpose, fiscal_year_id, request_date, report_date,
@@ -337,6 +338,7 @@ insert into public.procurement_funding_allocations
 values ('faaaaaaa-0000-4000-8000-000000000003', 1,
         'f0000000-0000-4000-8000-000000000003', 1000.00);
 
+set local role authenticated;
 set local request.jwt.claim.sub = 'f1111111-1111-4111-8111-111111111111';
 select public.procurement_submit('faaaaaaa-0000-4000-8000-000000000003',
   (select version from public.procurements where id = 'faaaaaaa-0000-4000-8000-000000000003'));

@@ -38,6 +38,13 @@ begin
   raise notice 'ok   % (%)', label, actual;
 end; $$;
 
+-- procurements / procurement_items / procurement_funding_allocations ปิดการเขียนตรงจาก authenticated
+-- แล้ว (F-08) ไฟล์นี้ทดสอบ "ยอดเงินจาก view / constraint / RLS ฝั่งอ่าน / trigger version" จึงจัดข้อมูลด้วย
+-- ตัวช่วยที่รันด้วยสิทธิ์เจ้าของ ส่วนเส้นทางเขียนจริง (RPC สร้าง/บันทึกร่าง) ทดสอบใน
+-- procurement_draft_atomic_test.sql
+create or replace function pg_temp.fx(stmt text) returns void
+language plpgsql security definer as $$ begin execute stmt; end; $$;
+
 -- ผู้ใช้สมมติ: เจ้าหน้าที่พัสดุ (read.all) และผู้ขอสองคน (read.own)
 insert into auth.users (id, email) values
   ('10000000-0000-0000-0000-000000000001', 'officer@example.test'),
@@ -63,10 +70,12 @@ set local request.jwt.claim.sub = '10000000-0000-0000-0000-000000000002';
 -- ---------------------------------------------------------------------------
 -- สร้าง draft
 -- ---------------------------------------------------------------------------
+select pg_temp.fx($fx$
 insert into public.procurements (id, subject, fiscal_year_id, request_date, created_by)
 values ('30000000-0000-0000-0000-000000000001', 'ซื้อวัสดุสำนักงาน (ตัวอย่าง)',
         '20000000-0000-0000-0000-000000000001', '2026-01-15',
-        '10000000-0000-0000-0000-000000000002');
+        '10000000-0000-0000-0000-000000000002')
+$fx$);
 
 select pg_temp.assert_eq(
   (select left(reference, 2) from public.procurements
@@ -81,13 +90,15 @@ select pg_temp.assert_fails($$
   insert into public.procurements (subject, fiscal_year_id, request_date, created_by)
   values ('สร้างในนามคนอื่น', '20000000-0000-0000-0000-000000000001', '2026-01-15',
           '10000000-0000-0000-0000-000000000003')
-$$, 'row-level security', 'สร้างรายการในนามคนอื่นไม่ได้');
+$$, 'permission denied for table procurements',
+   'สร้างรายการในนามคนอื่นผ่านตารางตรงไม่ได้ (เขียนได้ทางเดียวคือ RPC — F-08)');
 
 select pg_temp.assert_fails($$
   insert into public.procurements (subject, status, fiscal_year_id, request_date, created_by)
   values ('สร้างเป็นอนุมัติแล้ว', 'APPROVED', '20000000-0000-0000-0000-000000000001',
           '2026-01-15', '10000000-0000-0000-0000-000000000002')
-$$, 'row-level security', 'สร้างรายการที่อนุมัติแล้วมาตรง ๆ ไม่ได้');
+$$, 'permission denied for table procurements',
+   'สร้างรายการที่อนุมัติแล้วมาตรง ๆ ผ่านตารางไม่ได้');
 
 -- ---------------------------------------------------------------------------
 -- ยอดเงิน — ค่าคาดหวังมาจากโดเมน (หน่วยสตางค์)
@@ -96,10 +107,12 @@ $$, 'row-level security', 'สร้างรายการที่อนุ�
 -- GOLDEN: INCLUSIVE | 3@107 d0 t7 ; 1@0.03 d0 t7 | 30003 | 0 | 2100 | 32103
 -- GOLDEN: EXCLUSIVE | 1@0.125 d0 t7 ; 3@33.335 d0 t7 | 10014 | 0 | 701 | 10715
 -- ---------------------------------------------------------------------------
+select pg_temp.fx($fx$
 insert into public.procurement_items
   (procurement_id, line_no, description, quantity, unit_price, discount_amount, tax_rate) values
   ('30000000-0000-0000-0000-000000000001', 1, 'กระดาษ A4 (ตัวอย่าง)', 3, 250.50, 0, 0),
-  ('30000000-0000-0000-0000-000000000001', 2, 'หมึกพิมพ์ (ตัวอย่าง)', 1, 1000, 0, 0);
+  ('30000000-0000-0000-0000-000000000001', 2, 'หมึกพิมพ์ (ตัวอย่าง)', 1, 1000, 0, 0)
+$fx$);
 
 select pg_temp.assert_eq(
   (select (grand_total * 100)::bigint from public.procurement_totals
@@ -107,15 +120,19 @@ select pg_temp.assert_eq(
   175150::bigint, 'EXEMPT: ยอดรวมตรงกับโดเมน');
 
 -- EXCLUSIVE VAT 7 พร้อมส่วนลด
+select pg_temp.fx($fx$
 insert into public.procurements (id, subject, tax_mode, fiscal_year_id, request_date, created_by)
 values ('30000000-0000-0000-0000-000000000002', 'จ้างบริการ (ตัวอย่าง)', 'EXCLUSIVE',
         '20000000-0000-0000-0000-000000000001', '2026-01-15',
-        '10000000-0000-0000-0000-000000000002');
+        '10000000-0000-0000-0000-000000000002')
+$fx$);
 
+select pg_temp.fx($fx$
 insert into public.procurement_items
   (procurement_id, line_no, description, quantity, unit_price, discount_amount, tax_rate) values
   ('30000000-0000-0000-0000-000000000002', 1, 'บรรทัด 1', 7, 123.45, 50.00, 7),
-  ('30000000-0000-0000-0000-000000000002', 2, 'บรรทัด 2', 2.5, 99.99, 0, 7);
+  ('30000000-0000-0000-0000-000000000002', 2, 'บรรทัด 2', 2.5, 99.99, 0, 7)
+$fx$);
 
 select pg_temp.assert_eq(
   (select (subtotal * 100)::bigint from public.procurement_totals
@@ -131,15 +148,19 @@ select pg_temp.assert_eq(
   113862::bigint, 'EXCLUSIVE: ยอดรวมตรงกับโดเมน');
 
 -- INCLUSIVE — ราคารวมภาษีแล้ว ต้องถอดภาษีออกได้ถูก
+select pg_temp.fx($fx$
 insert into public.procurements (id, subject, tax_mode, fiscal_year_id, request_date, created_by)
 values ('30000000-0000-0000-0000-000000000003', 'ซื้อรวมภาษี (ตัวอย่าง)', 'INCLUSIVE',
         '20000000-0000-0000-0000-000000000001', '2026-01-15',
-        '10000000-0000-0000-0000-000000000002');
+        '10000000-0000-0000-0000-000000000002')
+$fx$);
 
+select pg_temp.fx($fx$
 insert into public.procurement_items
   (procurement_id, line_no, description, quantity, unit_price, discount_amount, tax_rate) values
   ('30000000-0000-0000-0000-000000000003', 1, 'บรรทัด 1', 3, 107, 0, 7),
-  ('30000000-0000-0000-0000-000000000003', 2, 'บรรทัด 2', 1, 0.03, 0, 7);
+  ('30000000-0000-0000-0000-000000000003', 2, 'บรรทัด 2', 1, 0.03, 0, 7)
+$fx$);
 
 select pg_temp.assert_eq(
   (select (grand_total * 100)::bigint from public.procurement_totals
@@ -147,15 +168,19 @@ select pg_temp.assert_eq(
   32103::bigint, 'INCLUSIVE: ยอดรวมตรงกับโดเมน');
 
 -- เศษครึ่งสตางค์ — จุดที่กติกาการปัดเศษต่างกันจะเห็นผลทันที
+select pg_temp.fx($fx$
 insert into public.procurements (id, subject, tax_mode, fiscal_year_id, request_date, created_by)
 values ('30000000-0000-0000-0000-000000000004', 'เศษครึ่งสตางค์ (ตัวอย่าง)', 'EXCLUSIVE',
         '20000000-0000-0000-0000-000000000001', '2026-01-15',
-        '10000000-0000-0000-0000-000000000002');
+        '10000000-0000-0000-0000-000000000002')
+$fx$);
 
+select pg_temp.fx($fx$
 insert into public.procurement_items
   (procurement_id, line_no, description, quantity, unit_price, discount_amount, tax_rate) values
   ('30000000-0000-0000-0000-000000000004', 1, 'บรรทัด 1', 1, 0.125, 0, 7),
-  ('30000000-0000-0000-0000-000000000004', 2, 'บรรทัด 2', 3, 33.335, 0, 7);
+  ('30000000-0000-0000-0000-000000000004', 2, 'บรรทัด 2', 3, 33.335, 0, 7)
+$fx$);
 
 select pg_temp.assert_eq(
   (select (subtotal * 100)::bigint from public.procurement_totals
@@ -177,19 +202,25 @@ $$, 'column "grand_total"', 'ไม่มีคอลัมน์ยอดรว
 -- constraint ของรายการย่อย
 -- ---------------------------------------------------------------------------
 select pg_temp.assert_fails($$
-  insert into public.procurement_items (procurement_id, line_no, description, quantity, unit_price)
-  values ('30000000-0000-0000-0000-000000000001', 3, 'จำนวนเป็นศูนย์', 0, 100)
+  select pg_temp.fx($fx$
+    insert into public.procurement_items (procurement_id, line_no, description, quantity, unit_price)
+    values ('30000000-0000-0000-0000-000000000001', 3, 'จำนวนเป็นศูนย์', 0, 100)
+  $fx$)
 $$, 'procurement_items_quantity_positive', 'จำนวนต้องมากกว่าศูนย์');
 
 select pg_temp.assert_fails($$
-  insert into public.procurement_items
-    (procurement_id, line_no, description, quantity, unit_price, discount_amount)
-  values ('30000000-0000-0000-0000-000000000001', 3, 'ส่วนลดเกินมูลค่า', 1, 100, 200)
+  select pg_temp.fx($fx$
+    insert into public.procurement_items
+      (procurement_id, line_no, description, quantity, unit_price, discount_amount)
+    values ('30000000-0000-0000-0000-000000000001', 3, 'ส่วนลดเกินมูลค่า', 1, 100, 200)
+  $fx$)
 $$, 'procurement_items_discount_within_line', 'ส่วนลดเกินมูลค่าบรรทัดไม่ได้');
 
 select pg_temp.assert_fails($$
-  insert into public.procurement_items (procurement_id, line_no, description, quantity, unit_price)
-  values ('30000000-0000-0000-0000-000000000001', 1, 'เลขบรรทัดซ้ำ', 1, 100)
+  select pg_temp.fx($fx$
+    insert into public.procurement_items (procurement_id, line_no, description, quantity, unit_price)
+    values ('30000000-0000-0000-0000-000000000001', 1, 'เลขบรรทัดซ้ำ', 1, 100)
+  $fx$)
 $$, 'procurement_items_procurement_id_line_no_key', 'เลขบรรทัดซ้ำในรายการเดียวกันไม่ได้');
 
 -- ---------------------------------------------------------------------------
@@ -205,30 +236,26 @@ select pg_temp.assert_eq(
   (select version from public.procurements where id = '30000000-0000-0000-0000-000000000001'),
   3, 'การเพิ่มรายการย่อย 2 บรรทัดเพิ่ม version ของรายการแม่ด้วย');
 
+select pg_temp.fx($fx$
 update public.procurements set subject = 'แก้ครั้งที่ 1'
-where id = '30000000-0000-0000-0000-000000000001';
+where id = '30000000-0000-0000-0000-000000000001'
+$fx$);
 
 select pg_temp.assert_eq(
   (select version from public.procurements where id = '30000000-0000-0000-0000-000000000001'),
   4, 'trigger เพิ่ม version ให้เองเมื่อแก้รายการแม่');
 
 -- client ส่ง version มาเองก็ถูกเขียนทับ ปลอมไม่ได้
+select pg_temp.fx($fx$
 update public.procurements set subject = 'แก้ครั้งที่ 2', version = 99
-where id = '30000000-0000-0000-0000-000000000001';
+where id = '30000000-0000-0000-0000-000000000001'
+$fx$);
 
 select pg_temp.assert_eq(
   (select version from public.procurements where id = '30000000-0000-0000-0000-000000000001'),
   5, 'client ตั้ง version เองไม่ได้ trigger เขียนทับเสมอ');
 
--- แก้ด้วย version เก่า = ไม่โดนแถวไหนเลย ผู้เรียกต้องรู้ว่าเกิด conflict
-do $$
-declare v_rows integer;
-begin
-  update public.procurements set subject = 'แก้ด้วย version เก่า'
-  where id = '30000000-0000-0000-0000-000000000001' and version = 1;
-  get diagnostics v_rows = row_count;
-  perform pg_temp.assert_eq(v_rows, 0, 'แก้ด้วย version เก่าไม่โดนแถวใดเลย (conflict)');
-end $$;
+-- การแก้ด้วย version เก่า (conflict) ทดสอบผ่าน RPC procurement_save_draft ใน procurement_draft_atomic_test.sql
 
 -- ---------------------------------------------------------------------------
 -- แก้ไขได้เฉพาะสถานะที่กำหนด และเปลี่ยนสถานะเองผ่านการแก้ไขไม่ได้
@@ -236,27 +263,26 @@ end $$;
 select pg_temp.assert_fails($$
   update public.procurements set status = 'APPROVED'
   where id = '30000000-0000-0000-0000-000000000001'
-$$, 'row-level security', 'เปลี่ยนสถานะเป็นอนุมัติผ่านการแก้ไขธรรมดาไม่ได้');
+$$, 'permission denied for table procurements',
+   'เปลี่ยนสถานะเป็นอนุมัติผ่านการแก้ไขตารางตรงไม่ได้');
 
 reset role;
+select pg_temp.fx($fx$
 update public.procurements set status = 'PENDING_APPROVAL'
-where id = '30000000-0000-0000-0000-000000000002';
+where id = '30000000-0000-0000-0000-000000000002'
+$fx$);
 set local role authenticated;
 set local request.jwt.claim.sub = '10000000-0000-0000-0000-000000000002';
 
-do $$
-declare v_rows integer;
-begin
+select pg_temp.assert_fails($$
   update public.procurements set subject = 'แก้ตอนรออนุมัติ'
-  where id = '30000000-0000-0000-0000-000000000002';
-  get diagnostics v_rows = row_count;
-  perform pg_temp.assert_eq(v_rows, 0, 'รายการที่รออนุมัติแล้วแก้ไม่ได้');
-end $$;
+  where id = '30000000-0000-0000-0000-000000000002'
+$$, 'permission denied for table procurements', 'รายการที่รออนุมัติแล้วแก้ผ่านตารางตรงไม่ได้');
 
 select pg_temp.assert_fails($$
   insert into public.procurement_items (procurement_id, line_no, description, quantity, unit_price)
   values ('30000000-0000-0000-0000-000000000002', 9, 'เพิ่มบรรทัดตอนรออนุมัติ', 1, 100)
-$$, 'row-level security', 'เพิ่มรายการย่อยตอนรออนุมัติไม่ได้');
+$$, 'permission denied for table procurement_items', 'เพิ่มรายการย่อยผ่านตารางตรงไม่ได้');
 
 -- ---------------------------------------------------------------------------
 -- RLS: ผู้ขออีกคนต้องมองไม่เห็น
@@ -268,14 +294,10 @@ select pg_temp.assert_eq((select count(*) from public.procurements)::integer, 0,
 select pg_temp.assert_eq((select count(*) from public.procurement_items)::integer, 0,
   'ผู้ขออีกคนมองไม่เห็นรายการย่อยของคนอื่นเลย');
 
-do $$
-declare v_rows integer;
-begin
+select pg_temp.assert_fails($$
   update public.procurements set subject = 'แก้ของคนอื่น'
-  where id = '30000000-0000-0000-0000-000000000001';
-  get diagnostics v_rows = row_count;
-  perform pg_temp.assert_eq(v_rows, 0, 'ผู้ขออีกคนแก้รายการของคนอื่นไม่ได้');
-end $$;
+  where id = '30000000-0000-0000-0000-000000000001'
+$$, 'permission denied for table procurements', 'ผู้ขออีกคนแก้รายการของคนอื่นไม่ได้');
 
 -- เจ้าหน้าที่พัสดุมี read.all จึงเห็นทั้งหมด
 set local request.jwt.claim.sub = '10000000-0000-0000-0000-000000000001';
@@ -299,10 +321,12 @@ insert into public.budget_accounts (id, code, fiscal_year_id, project_id) values
 set local role authenticated;
 set local request.jwt.claim.sub = '10000000-0000-0000-0000-000000000002';
 
+select pg_temp.fx($fx$
 insert into public.procurement_funding_allocations
   (procurement_id, budget_account_id, line_no, amount) values
   ('30000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000001', 1, 1000.00),
-  ('30000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000002', 2, 751.50);
+  ('30000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000002', 2, 751.50)
+$fx$);
 
 select pg_temp.assert_eq(
   (select (funding_total * 100)::bigint from public.procurement_totals
@@ -310,10 +334,12 @@ select pg_temp.assert_eq(
   175150::bigint, 'ผลรวมแหล่งเงินสองบรรทัดเท่ากับยอดรวมของรายการ');
 
 select pg_temp.assert_fails($$
-  insert into public.procurement_funding_allocations
-    (procurement_id, budget_account_id, line_no, amount)
-  values ('30000000-0000-0000-0000-000000000001',
-          '50000000-0000-0000-0000-000000000001', 3, 10.00)
+  select pg_temp.fx($fx$
+    insert into public.procurement_funding_allocations
+      (procurement_id, budget_account_id, line_no, amount)
+    values ('30000000-0000-0000-0000-000000000001',
+            '50000000-0000-0000-0000-000000000001', 3, 10.00)
+  $fx$)
 $$, 'procurement_id_budget_account',
    'บัญชีงบเดียวกันซ้ำสองบรรทัดในรายการเดียวไม่ได้');
 
