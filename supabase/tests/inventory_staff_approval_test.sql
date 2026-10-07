@@ -64,8 +64,8 @@ insert into public.profiles (id, email, first_name_th, last_name_th, employee_co
 insert into public.user_roles (user_id, role_code) values
   ('c1111111-1111-4111-8111-111111111111', 'INVENTORY_OFFICER'),
   ('c2222222-2222-4222-8222-222222222222', 'REQUESTER'),
-  ('c3333333-3333-4333-8333-333333333333', 'APPROVER'),
-  ('c4444444-4444-4444-8444-444444444444', 'APPROVER'),
+  ('c3333333-3333-4333-8333-333333333333', 'PROCUREMENT_OFFICER'),
+  ('c4444444-4444-4444-8444-444444444444', 'PROCUREMENT_OFFICER'),
   ('c6666666-6666-4666-8666-666666666666', 'REQUESTER');
 
 insert into public.units (id, code, name_th) values
@@ -100,8 +100,8 @@ grant execute on all functions in schema pg_temp to public;
 select pg_temp.assert_eq(
   (select array_agg(role_code order by role_code) from public.role_permissions
     where permission_code = 'inventory.approve'),
-  array['APPROVER', 'SYSTEM_ADMIN']::text[],
-  'inventory.approve เป็นค่าเริ่มต้นของ APPROVER และ SYSTEM_ADMIN เท่านั้น');
+  array['PROCUREMENT_OFFICER', 'SYSTEM_ADMIN']::text[],
+  'inventory.approve เป็นค่าเริ่มต้นของ PROCUREMENT_OFFICER (เจ้าหน้าที่พัสดุ) และ SYSTEM_ADMIN เท่านั้น — ตาม Q36');
 
 -- ---------------------------------------------------------------------------
 -- รายชื่อผู้เบิก/ผู้อนุมัติ
@@ -127,7 +127,7 @@ select pg_temp.assert_eq(
 select pg_temp.assert_eq(
   (select can_approve from public.inventory_staff_directory()
     where id = 'c3333333-3333-4333-8333-333333333333'),
-  true, 'ผู้ถือ APPROVER มี can_approve = true');
+  true, 'ผู้ถือ PROCUREMENT_OFFICER มี can_approve = true');
 
 select pg_temp.assert_eq(
   (select can_approve from public.inventory_staff_directory()
@@ -169,7 +169,7 @@ select pg_temp.assert_fails(
 select pg_temp.as_user('c1111111-1111-4111-8111-111111111111');
 select pg_temp.mv('RECEIPT', 100, 'RC-SA-1');
 
--- ผ่าน: ผู้เบิก (ครู) ≠ ผู้อนุมัติ (APPROVER ที่ active)
+-- ผ่าน: ผู้เบิก (ครู) ≠ ผู้อนุมัติ (PROCUREMENT_OFFICER ที่ active)
 select pg_temp.mv('ISSUE', 5, 'REQ-SA-OK',
   'c2222222-2222-4222-8222-222222222222', 'c3333333-3333-4333-8333-333333333333');
 select pg_temp.assert_eq(
@@ -204,7 +204,7 @@ select pg_temp.assert_fails(
        'cffffff0-0000-4000-8000-000000000000', 'c3333333-3333-4333-8333-333333333333') $$,
   'ผู้เบิกที่ระบุไม่มีอยู่', 'เบิก: ผู้เบิกที่ไม่มีอยู่จริงถูกปฏิเสธ');
 
--- ผู้เบิก = ผู้อนุมัติ (แม้เป็น APPROVER ก็อนุมัติใบเบิกของตัวเองไม่ได้)
+-- ผู้เบิก = ผู้อนุมัติ (แม้เป็น PROCUREMENT_OFFICER ก็อนุมัติใบเบิกของตัวเองไม่ได้)
 select pg_temp.assert_fails(
   $$ select pg_temp.mv('ISSUE', 1, 'REQ-SA-6',
        'c3333333-3333-4333-8333-333333333333', 'c3333333-3333-4333-8333-333333333333') $$,
@@ -246,13 +246,13 @@ select pg_temp.assert_eq(
 -- ถอนอำนาจออกจากบทบาทแล้วต้องมีผลทันที (ตรวจสิทธิ์จริง ไม่ใช่ค่าที่แคชไว้)
 reset role;
 select pg_temp.fx($$ delete from public.role_permissions
-  where role_code = 'APPROVER' and permission_code = 'inventory.approve' $$);
+  where role_code = 'PROCUREMENT_OFFICER' and permission_code = 'inventory.approve' $$);
 set local role authenticated;
 select pg_temp.as_user('c1111111-1111-4111-8111-111111111111');
 select pg_temp.assert_fails(
   $$ select pg_temp.mv('ISSUE', 1, 'REQ-SA-9',
        'c2222222-2222-4222-8222-222222222222', 'c3333333-3333-4333-8333-333333333333') $$,
-  'ไม่มีอำนาจอนุมัติ', 'ถอน inventory.approve ออกจาก APPROVER แล้วอนุมัติไม่ได้ทันที');
+  'ไม่มีอำนาจอนุมัติ', 'ถอน inventory.approve ออกจาก PROCUREMENT_OFFICER แล้วอนุมัติไม่ได้ทันที');
 
 reset role;
 rollback;
