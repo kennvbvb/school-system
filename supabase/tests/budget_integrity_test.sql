@@ -11,6 +11,12 @@
 
 begin;
 
+-- budget_available() เป็นฟังก์ชันภายใน (client เรียกตรงไม่ได้ — F-06) ห่อด้วย security definer ใน pg_temp
+-- เพื่อให้ test อ่านยอดได้แม้กำลังรันในนามผู้ใช้ authenticated
+create or replace function pg_temp.available(p_account uuid)
+returns numeric language sql security definer as $$ select public.budget_available(p_account); $$;
+
+
 insert into auth.users (id, email) values
   ('11111111-1111-1111-4111-811111111111', 'integrity-finance@example.test');
 
@@ -97,7 +103,7 @@ select pg_temp.assert_fails($$
 $$, 'ต้องทำผ่าน budget_transfer', 'ลง TRANSFER_OUT ขาเดียวไม่ได้');
 
 select pg_temp.assert_eq(
-  public.budget_available('bbbbbbbb-0000-0000-4000-800000000012'), 0.00,
+  pg_temp.available('bbbbbbbb-0000-0000-4000-800000000012'), 0.00,
   'บัญชีปลายทางยังไม่มีงบหลังการโอนขาเดียวถูกปฏิเสธ');
 
 -- การโอนที่ถูกต้องยังทำได้เหมือนเดิม — เครื่องหมายไม่ได้ปิดเส้นทางที่ถูกต้อง
@@ -107,10 +113,10 @@ select public.budget_transfer(
 );
 
 select pg_temp.assert_eq(
-  public.budget_available('bbbbbbbb-0000-0000-4000-800000000011'), 8000.00,
+  pg_temp.available('bbbbbbbb-0000-0000-4000-800000000011'), 8000.00,
   'บัญชีต้นทางลดลงตามยอดที่โอน');
 select pg_temp.assert_eq(
-  public.budget_available('bbbbbbbb-0000-0000-4000-800000000012'), 2000.00,
+  pg_temp.available('bbbbbbbb-0000-0000-4000-800000000012'), 2000.00,
   'บัญชีปลายทางเพิ่มขึ้นตามยอดที่โอน');
 
 /*
@@ -176,7 +182,7 @@ select public.budget_post_movement(
 );
 
 select pg_temp.assert_eq(
-  public.budget_available('bbbbbbbb-0000-0000-4000-800000000013'), 5000.00,
+  pg_temp.available('bbbbbbbb-0000-0000-4000-800000000013'), 5000.00,
   'ย้อนการจัดสรรแล้วเหลือเฉพาะยอดที่จัดสรรเพิ่ม');
 
 -- ย้อนรายการย้อนอีกชั้นไม่ได้ — ไล่ต้นทางไม่จบและทิศทางตีความไม่ได้
@@ -269,7 +275,7 @@ select public.budget_post_movement(
 );
 
 select pg_temp.assert_eq(
-  public.budget_available('bbbbbbbb-0000-0000-4000-800000000012'), 2000.00,
+  pg_temp.available('bbbbbbbb-0000-0000-4000-800000000012'), 2000.00,
   'คืนยอดครบแล้วยอดที่ใช้ได้กลับมาเท่าเดิม');
 
 rollback;

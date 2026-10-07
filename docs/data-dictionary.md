@@ -94,6 +94,38 @@ PK ประกอบ `(role_code, permission_code)` — กันการผ�
 | `granted_by`    | uuid        | FK → profiles, on delete set null                                   |
 | `granted_at`    | timestamptz | not null default now()                                              |
 
+## view และฟังก์ชันอ่าน — ต้องไม่ข้ามสิทธิ์ของตาราง (F-06)
+
+view ทั้งสี่ตัว (`procurement_item_amounts`, `procurement_totals`, `budget_account_balances`,
+`stock_item_balances`) ตั้ง **`security_invoker = true`** (migration `20261006000300`) — ผู้เรียก
+เห็นเฉพาะแถวที่ RLS ของตารางเบื้องหลังอนุญาตให้ผู้เรียกคนนั้น: ไม่มีสิทธิ์ = 0 แถว, `read.own` =
+เฉพาะของตน, `read.all` = ทั้งหมด เดิม view รันด้วยสิทธิ์เจ้าของจึงข้าม RLS — ผู้ใช้ที่ login แล้วทุกคนอ่านยอด
+ของทุกรายการ/ทุกบัญชีงบ/ทุกพัสดุได้ (`supabase/tests/view_read_boundary_test.sql` พิสูจน์ทั้งสองด้าน
+และมี test ยืนยันว่าบน baseline เดิมผู้ไม่มีสิทธิ์เห็น 2 แถว) ต้องตั้งทุกตัวรวมถึง view ที่ถูก view อื่นเรียกอีกที
+มิฉะนั้นตัวในจะข้าม RLS ต่อ test แรกในไฟล์ตรวจว่า **ทุก view ใน public** เป็น security_invoker
+ดังนั้น view ใหม่ที่ลืมตั้งจะทำให้ CI แดง
+
+RPC แบบ security definer (เช่น `procurement_submit`) ที่อ่าน view เหล่านี้ทำงานเหมือนเดิม เพราะผู้เรียก view
+ในนั้นคือเจ้าของฟังก์ชัน
+
+**ฟังก์ชันภายใน** — `budget_available(uuid)` และ `stock_on_hand(uuid)` เป็น security definer ที่ไม่ตรวจสิทธิ์อ่าน
+(แอปไม่เคยเรียกตรง ใช้ภายใน RPC ธุรกรรมที่ตรวจสิทธิ์แล้ว) จึงเพิกถอน execute จาก `authenticated`/`anon`/PUBLIC —
+client อ่านยอดผ่าน view (RLS) เท่านั้น ส่วน SQL test ที่ต้องเรียกสองตัวนี้ห่อด้วย `security definer` ใน `pg_temp`
+
+**`anon` ไม่มีสิทธิ์อะไรเลยใน schema `public`** — Supabase ให้ `anon` execute ฟังก์ชันและเข้าถึงตารางเป็นค่าเริ่มต้น
+(`revoke ... from public` อย่างเดียวไม่พอ) migration เพิกถอนจาก `anon` และ PUBLIC ทั้งหมดแล้วคืน execute ให้
+`authenticated` เฉพาะฟังก์ชันที่เดิมมีสิทธิ์ (ผู้ใช้ที่ login แล้วไม่เสียสิทธิ์ใด) และ `service_role` คงเดิม
+`view_read_boundary_test.sql` ตรวจทั้ง schema ฟังก์ชันที่เพิ่มภายหลังแล้วลืม revoke จะทำให้ CI แดง
+(ต้อง `revoke execute ... from public, anon` ทุกครั้งที่สร้างฟังก์ชัน ตามที่ migration ก่อนหน้าทำอยู่แล้ว)
+
+**ต้นทุนที่ทราบ** — RLS ของ `procurement_items`/`procurement_funding_allocations` เรียก `can_read_procurement()`
+(และ `can_edit_procurement()` เพราะ policy `for all`) ต่อแถว เมื่อ view เป็น invoker ทะเบียนจัดซื้อที่อ่านผ่าน
+`procurement_totals` ช้าลง: วัดบน PostgreSQL 16 เครื่องเดียว 5,000 รายการ × 3 รายการย่อย ใช้ ~4.2 วินาที (เดิม ~0.5 วินาที)
+หน้าจอเพดาน 1,000 แถว ~0.85 วินาที ยังใช้งานได้และถือว่าคุ้มกับการปิดช่องรั่ว — ถ้าโรงเรียนมีข้อมูลมากกว่านี้
+จริงให้ปรับ policy/ฟังก์ชันให้ถูกลง (เช่น คำนวณยอดด้วยฟังก์ชันเดียวต่อรายการ) แยกเป็นงานเฉพาะ
+
+---
+
 ## `audit_events` — บันทึกการกระทำ
 
 **append-only** — มีเฉพาะ policy `select` และเพิกถอน `insert, update, delete`
@@ -105,6 +137,24 @@ PK ประกอบ `(role_code, permission_code)` — กันการผ�
 `actor_id` จาก `auth.uid()` ของผู้เรียกเองเสมอ ไม่มีพารามิเตอร์ให้ระบุ actor เอง
 เลย ดู `supabase/tests/audit_trusted_rpc_test.sql` สำหรับ test ที่พิสูจน์ว่า
 คนละคนเรียกได้ `actor_id` ตามตัวเองจริง ปลอมกันไม่ได้
+
+**แยกหลักฐานสองระดับด้วย `provenance` (migration `20261006000300`, ข้อค้นพบ F-07)** —
+ปิดการปลอม actor ไม่พอ เพราะ `record_audit_event()` เดิมรับ action/entity/before/after
+/metadata อิสระจากผู้ใช้ทุกคน ผู้ใช้ทั่วไปจึงอ้างว่าตนออกเอกสาร เปลี่ยนสิทธิ์ หรือ export
+พร้อม checksum ที่สร้างเองได้ ตอนนี้:
+
+| `provenance`   | ใครเขียน                                                                                                                       | ความหมาย                                                                                                                                             |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DB_TRUSTED`   | RPC ธุรกรรม (security definer) ในทรานแซกชันเดียวกับข้อมูล เช่น `user_set_roles`, `stock_post_movement`, `procurement_disburse` | ฐานข้อมูลเป็นผู้ยืนยันว่าเกิดขึ้นจริง                                                                                                                |
+| `APP_REPORTED` | แอปรายงานผ่าน `record_audit_event()`                                                                                           | ฐานข้อมูลตรวจ **สิทธิ์ + การมีอยู่ของ entity** แต่ไม่พิสูจน์ว่า before/after/metadata ตรงความจริง (เช่น checksum ของไฟล์ export เป็นคำบอกเล่าของแอป) |
+
+`record_audit_event()` รับเฉพาะคู่ `(action, entity_type)` ที่แอปรายงานจริง
+(`audit_reportable_permission()` คืนสิทธิ์ที่ต้องมี — คู่ที่ไม่อยู่ในรายการถูกปฏิเสธ) และ
+`entity_id` ต้องชี้แถวที่มีอยู่จริง action ที่ RPC ธุรกรรมเขียนเอง (`user.roles_change`,
+`user.active_change`, `procurement.disburse`, `document.issue`, ความเคลื่อนไหวคลัง/งบ ฯลฯ)
+**เขียนผ่านช่องทางนี้ไม่ได้เลย** payload รวมเกิน 32 KB ถูกปฏิเสธ แถวเดิมถูก backfill เป็น
+`APP_REPORTED` ถ้าเป็นคู่ที่แอปรายงานตามปกติ นอกนั้นเป็น `DB_TRUSTED`
+(การย้ายเหตุการณ์ของ mutation แต่ละตัวเข้าไปเขียนใน RPC ของตัวเองเป็นงานต่อเนื่อง — F-08)
 
 | คอลัมน์                      | ชนิด  | หมายเหตุ                                                         |
 | ---------------------------- | ----- | ---------------------------------------------------------------- |

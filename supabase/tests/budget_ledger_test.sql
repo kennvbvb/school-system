@@ -13,6 +13,12 @@
 
 begin;
 
+-- budget_available() เป็นฟังก์ชันภายใน (client เรียกตรงไม่ได้ — F-06) ห่อด้วย security definer ใน pg_temp
+-- เพื่อให้ test อ่านยอดได้แม้กำลังรันในนามผู้ใช้ authenticated
+create or replace function pg_temp.available(p_account uuid)
+returns numeric language sql security definer as $$ select public.budget_available(p_account); $$;
+
+
 -- ผู้ใช้สมมติสำหรับทดสอบ ไม่แตะข้อมูลจริง
 insert into auth.users (id, email) values
   ('11111111-1111-1111-1111-111111111111', 'finance@example.test'),
@@ -104,7 +110,7 @@ select public.budget_post_movement(
   'bbbbbbbb-0000-0000-0000-000000000001', 'ALLOCATION', 6000.00, '2026-01-15', 'จัดสรรตั้งต้น'
 );
 
-select pg_temp.assert_eq(public.budget_available('bbbbbbbb-0000-0000-0000-000000000001'), 6000.00,
+select pg_temp.assert_eq(pg_temp.available('bbbbbbbb-0000-0000-0000-000000000001'), 6000.00,
   'จัดสรรแล้วยอดที่ใช้ได้เท่ากับที่จัดสรร');
 
 select pg_temp.assert_fails($$
@@ -112,14 +118,14 @@ select pg_temp.assert_fails($$
     'bbbbbbbb-0000-0000-0000-000000000001', 'RESERVE', 6199.00, '2026-01-20', 'ทดสอบเกินงบ')
 $$, 'ยอดงบคงเหลือไม่พอ', 'F-01 กันยอด 6,199 จากงบ 6,000 ถูกบล็อก');
 
-select pg_temp.assert_eq(public.budget_available('bbbbbbbb-0000-0000-0000-000000000001'), 6000.00,
+select pg_temp.assert_eq(pg_temp.available('bbbbbbbb-0000-0000-0000-000000000001'), 6000.00,
   'ยอดไม่เปลี่ยนหลังถูกปฏิเสธ');
 
 -- ใช้พอดีทำได้
 select public.budget_post_movement(
   'bbbbbbbb-0000-0000-0000-000000000001', 'RESERVE', 6000.00, '2026-01-20', 'กันยอดเต็มจำนวน'
 );
-select pg_temp.assert_eq(public.budget_available('bbbbbbbb-0000-0000-0000-000000000001'), 0.00,
+select pg_temp.assert_eq(pg_temp.available('bbbbbbbb-0000-0000-0000-000000000001'), 0.00,
   'กันยอดเต็มจำนวนแล้วเหลือศูนย์');
 
 -- ---------------------------------------------------------------------------
@@ -163,9 +169,9 @@ select public.budget_transfer(
   1000.00, '2026-02-01', 'โอนสนับสนุนโครงการ'
 );
 
-select pg_temp.assert_eq(public.budget_available('bbbbbbbb-0000-0000-0000-000000000002'), 4000.00,
+select pg_temp.assert_eq(pg_temp.available('bbbbbbbb-0000-0000-0000-000000000002'), 4000.00,
   'บัญชีต้นทางลดลงตามยอดโอน');
-select pg_temp.assert_eq(public.budget_available('bbbbbbbb-0000-0000-0000-000000000001'), 1000.00,
+select pg_temp.assert_eq(pg_temp.available('bbbbbbbb-0000-0000-0000-000000000001'), 1000.00,
   'บัญชีปลายทางเพิ่มขึ้นตามยอดโอน');
 
 select pg_temp.assert_eq(

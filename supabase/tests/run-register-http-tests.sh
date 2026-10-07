@@ -40,34 +40,44 @@ api() {
 
 OFFICER_ID="c4111111-1111-4111-8111-111111111111"
 OFFICER_EMAIL="regh-officer@example.com"
-OFFICER_PASSWORD="regh-test-password-$(date +%s)"
+NOBODY_ID="c4222222-2222-4222-8222-222222222222"
+NOBODY_EMAIL="regh-nobody@example.com"
+TEST_PASSWORD="regh-test-password-$(date +%s)"
 
 echo "== เตรียมข้อมูลทดสอบ =="
 
-# 1) ผู้ใช้ (เจ้าหน้าที่พัสดุ มี procurement.read.all)
-if [ -z "${ACCESS_TOKEN:-}" ]; then
-  [ -n "$SERVICE_ROLE_KEY" ] || fail "ต้องระบุ SERVICE_ROLE_KEY หรือ ACCESS_TOKEN"
-
-  existing="$(psql "$DB_URL" -t -A -c "select id from auth.users where email = '$OFFICER_EMAIL'")"
+# สร้าง/รีเซ็ตผู้ใช้ผ่าน GoTrue admin API แล้ว sign in — ตั้ง USER_ID และ USER_TOKEN
+provision_user() { # email
+  local email="$1" existing created
+  existing="$(psql "$DB_URL" -t -A -c "select id from auth.users where email = '$email'")"
   if [ -n "$existing" ]; then
-    OFFICER_ID="$existing"
-    api -X PUT "$API_URL/auth/v1/admin/users/$OFFICER_ID" \
+    USER_ID="$existing"
+    api -X PUT "$API_URL/auth/v1/admin/users/$USER_ID" \
       -H "apikey: $SERVICE_ROLE_KEY" -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
       -H 'Content-Type: application/json' \
-      -d "{\"password\": \"$OFFICER_PASSWORD\"}" > /dev/null
+      -d "{\"password\": \"$TEST_PASSWORD\"}" > /dev/null
   else
     created="$(api -X POST "$API_URL/auth/v1/admin/users" \
       -H "apikey: $SERVICE_ROLE_KEY" -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
       -H 'Content-Type: application/json' \
-      -d "{\"email\": \"$OFFICER_EMAIL\", \"password\": \"$OFFICER_PASSWORD\", \"email_confirm\": true}")"
-    OFFICER_ID="$(echo "$created" | jq -r '.id')"
+      -d "{\"email\": \"$email\", \"password\": \"$TEST_PASSWORD\", \"email_confirm\": true}")"
+    USER_ID="$(echo "$created" | jq -r '.id')"
   fi
 
-  ACCESS_TOKEN="$(api -X POST "$API_URL/auth/v1/token?grant_type=password" \
+  USER_TOKEN="$(api -X POST "$API_URL/auth/v1/token?grant_type=password" \
     -H "apikey: $ANON_KEY" -H 'Content-Type: application/json' \
-    -d "{\"email\": \"$OFFICER_EMAIL\", \"password\": \"$OFFICER_PASSWORD\"}" | jq -r '.access_token')"
-  [ -n "$ACCESS_TOKEN" ] && [ "$ACCESS_TOKEN" != "null" ] || fail "sign in ไม่ได้ access token"
+    -d "{\"email\": \"$email\", \"password\": \"$TEST_PASSWORD\"}" | jq -r '.access_token')"
+  [ -n "$USER_TOKEN" ] && [ "$USER_TOKEN" != "null" ] || fail "sign in ไม่ได้ access token ของ $email"
+}
+
+# 1) ผู้ใช้: เจ้าหน้าที่พัสดุ (มี procurement.read.all) และผู้ใช้ที่ไม่มีสิทธิ์ใด ๆ
+#    รันในเครื่องที่ไม่มี GoTrue ส่ง ACCESS_TOKEN และ ACCESS_TOKEN_NOBODY (JWT ที่ลงนามเอง) มาแทนได้
+if [ -z "${ACCESS_TOKEN:-}" ]; then
+  [ -n "$SERVICE_ROLE_KEY" ] || fail "ต้องระบุ SERVICE_ROLE_KEY หรือ ACCESS_TOKEN"
+  provision_user "$OFFICER_EMAIL"; OFFICER_ID="$USER_ID"; ACCESS_TOKEN="$USER_TOKEN"
+  provision_user "$NOBODY_EMAIL"; NOBODY_ID="$USER_ID"; ACCESS_TOKEN_NOBODY="$USER_TOKEN"
 fi
+: "${ACCESS_TOKEN_NOBODY:?ต้องมี ACCESS_TOKEN_NOBODY เมื่อส่ง ACCESS_TOKEN เอง}"
 
 # 2) โปรไฟล์ + บทบาท + ปีงบ + ทะเบียนจำนวนมาก (idempotent)
 psql "$DB_URL" -v ON_ERROR_STOP=1 -q <<SQL
@@ -82,6 +92,14 @@ on conflict (id) do nothing;
 insert into public.user_roles (user_id, role_code)
 values ('$OFFICER_ID', 'PROCUREMENT_OFFICER')
 on conflict do nothing;
+
+-- ผู้ใช้ที่ active แต่ไม่มีบทบาทใดเลย
+insert into auth.users (id, email)
+  select '$NOBODY_ID', '$NOBODY_EMAIL'
+  where not exists (select 1 from auth.users where id = '$NOBODY_ID');
+insert into public.profiles (id, email, first_name_th, last_name_th, is_active)
+values ('$NOBODY_ID', '$NOBODY_EMAIL', 'ทดสอบ', 'ไม่มีสิทธิ์', true)
+on conflict (id) do nothing;
 
 insert into public.fiscal_years (id, code, year_be, start_date, end_date, status)
 values ('c4000000-0000-4000-8000-0000000000f1', 'FYRH1', 2530, '1986-10-01', '1987-09-30', 'OPEN')
@@ -153,6 +171,40 @@ plain="$(api -X POST "$REST_URL/rpc/procurement_register_rows" \
   -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ACCESS_TOKEN" -H 'Content-Type: application/json' \
   -d '{"p_date_from": "1987-02-02", "p_date_to": "1987-02-02", "p_limit": 5000}' | jq 'length')"
 echo "info procurement_register_rows ผ่าน PostgREST ขอ 5000 แถว (มี 5000) ได้ $plain แถว — ถ้าน้อยกว่า 5000 แปลว่า max_rows ตัดจริง"
+
+echo
+echo "== ผ่าน Data API: view/ฟังก์ชันไม่ข้ามสิทธิ์ (F-06) =="
+
+# ผู้ที่ไม่มีสิทธิ์ใด ๆ — view ต้องว่าง ไม่ใช่ 403 (RLS กรอง) และ RPC ที่อ่านต้องได้ total 0
+for view in procurement_totals procurement_item_amounts budget_account_balances stock_item_balances; do
+  got="$(api "$REST_URL/$view?limit=5" -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ACCESS_TOKEN_NOBODY" | jq 'length')"
+  [ "$got" = "0" ] || fail "ผู้ไม่มีสิทธิ์อ่าน $view ได้ $got แถว (ควรเป็น 0)"
+done
+echo "ok   ผู้ไม่มีสิทธิ์: view ทั้งสี่ว่าง"
+
+nobody_total="$(api -X POST "$REST_URL/rpc/procurement_register_result" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ACCESS_TOKEN_NOBODY" -H 'Content-Type: application/json' \
+  -d '{"p_date_from": "1987-02-03", "p_date_to": "1987-02-03", "p_limit": 5000}' | jq -r '.total_count')"
+[ "$nobody_total" = "0" ] || fail "ผู้ไม่มีสิทธิ์เห็นทะเบียน total_count=$nobody_total (ควรเป็น 0)"
+echo "ok   ผู้ไม่มีสิทธิ์: ทะเบียน total_count = 0"
+
+# เจ้าหน้าที่พัสดุเห็นยอดจริง (ไม่ใช่แค่ว่างเสมอ — กันกรณี view พังจนทุกคนเห็น 0)
+officer_rows="$(api "$REST_URL/procurement_totals?limit=3" -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ACCESS_TOKEN" | jq 'length')"
+[ "$officer_rows" = "3" ] || fail "เจ้าหน้าที่พัสดุควรเห็นยอดรายการ แต่ได้ $officer_rows แถว"
+echo "ok   เจ้าหน้าที่พัสดุ (read.all) เห็นยอดรายการ"
+
+# ฟังก์ชันภายในเรียกตรงไม่ได้ แม้มีสิทธิ์ (ต้องอ่านผ่าน view)
+code="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$REST_URL/rpc/budget_available" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ACCESS_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"account_id": "c4000000-0000-4000-8000-000000000000"}')"
+case "$code" in 401|403|404) echo "ok   budget_available เรียกผ่าน Data API ไม่ได้ (HTTP $code)";; *) fail "budget_available ควรถูกปฏิเสธ แต่ได้ HTTP $code";; esac
+
+# anon (ไม่มี JWT ผู้ใช้): view และ RPC ถูกปฏิเสธที่ระดับสิทธิ์
+code="$(curl -s -o /dev/null -w '%{http_code}' "$REST_URL/procurement_totals?limit=1" -H "apikey: $ANON_KEY")"
+case "$code" in 401|403) echo "ok   anon อ่าน procurement_totals ไม่ได้ (HTTP $code)";; *) fail "anon อ่าน view ได้/ผิดปกติ HTTP $code";; esac
+code="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$REST_URL/rpc/procurement_register_result" \
+  -H "apikey: $ANON_KEY" -H 'Content-Type: application/json' -d '{}')"
+case "$code" in 401|403) echo "ok   anon เรียก procurement_register_result ไม่ได้ (HTTP $code)";; *) fail "anon เรียก RPC ได้/ผิดปกติ HTTP $code";; esac
 
 echo
 echo "ผ่านทั้งหมด"

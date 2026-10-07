@@ -50,7 +50,7 @@ begin
 end; $$;
 
 create or replace function pg_temp.available(p_account uuid)
-returns numeric language sql as $$ select public.budget_available(p_account); $$;
+returns numeric language sql security definer as $$ select public.budget_available(p_account); $$;
 
 /* ยอดที่ยังกันไว้ของรายการหนึ่ง — ฟังก์ชันจริงถูกเพิกถอนจาก authenticated
    จึงห่อด้วย security definer ใน pg_temp แทนการเปิดสิทธิ์ให้ของจริง */

@@ -12,6 +12,12 @@
 --   * anon เรียกฟังก์ชันนี้ไม่ได้เลยที่ระดับสิทธิ์ ก่อนถึงเงื่อนไขในฟังก์ชันด้วยซ้ำ
 --   * RPC เดิมที่ insert เข้า audit_events อยู่แล้ว (เช่น budget_post_movement) ไม่พัง
 --     เพราะรันเป็นเจ้าของฟังก์ชัน ไม่ถูก grant/revoke ของ authenticated บังคับ
+--
+-- F-07 (migration 20261006000300) — record_audit_event เป็น "ช่องทางแอปรายงาน" ที่ถูกจำกัด:
+--   * รับเฉพาะคู่ (action, entity_type) ที่แอปรายงานจริง และต้องมีสิทธิ์ของงานนั้น
+--   * อ้างถึงแถวที่มีอยู่จริงเท่านั้น
+--   * action ที่ RPC ธุรกรรมเขียนเอง (user.roles_change ฯลฯ) เขียนผ่านช่องทางนี้ไม่ได้
+--   * แถวที่ผ่านช่องทางนี้ติด provenance = APP_REPORTED แยกจาก DB_TRUSTED ของ RPC ธุรกรรม
 -- =============================================================================
 
 \set ON_ERROR_STOP on
@@ -56,6 +62,23 @@ insert into public.profiles (id, email, first_name_th, last_name_th, is_active) 
   ('f2222222-2222-4222-8222-222222222222', 'sec-b@example.test', 'ทดสอบ', 'บี', true),
   ('f3333333-3333-4333-8333-333333333333', 'sec-inactive@example.test', 'ทดสอบ', 'ถูกปิด', false);
 
+-- A และ B เป็นผู้ดูแลระบบ (มี masters.manage ฯลฯ) ส่วน D เป็นผู้ขอ (ไม่มีสิทธิ์จัดการข้อมูลหลัก)
+-- E เป็นเจ้าหน้าที่พัสดุ (มี reports.export)
+insert into auth.users (id, email) values
+  ('f4444444-4444-4444-8444-444444444444', 'sec-requester@example.test'),
+  ('f5555555-5555-4555-8555-555555555555', 'sec-officer@example.test');
+insert into public.profiles (id, email, first_name_th, last_name_th, is_active) values
+  ('f4444444-4444-4444-8444-444444444444', 'sec-requester@example.test', 'ทดสอบ', 'ผู้ขอ', true),
+  ('f5555555-5555-4555-8555-555555555555', 'sec-officer@example.test', 'ทดสอบ', 'พัสดุ', true);
+insert into public.user_roles (user_id, role_code) values
+  ('f1111111-1111-4111-8111-111111111111', 'SYSTEM_ADMIN'),
+  ('f2222222-2222-4222-8222-222222222222', 'SYSTEM_ADMIN'),
+  ('f4444444-4444-4444-8444-444444444444', 'REQUESTER'),
+  ('f5555555-5555-4555-8555-555555555555', 'PROCUREMENT_OFFICER');
+
+insert into public.vendors (id, vendor_code, name) values
+  ('f0000000-0000-4000-8000-0000000000e1', 'VD-SEC1', 'ร้านทดสอบ audit (ตัวอย่าง)');
+
 -- ---------------------------------------------------------------------------
 -- ปิด insert ตรงแล้วจริง — ทั้งที่ระดับ policy และ table privilege
 -- ---------------------------------------------------------------------------
@@ -81,7 +104,7 @@ select pg_temp.assert_fails(
 
 select pg_temp.assert_eq(
   (select public.record_audit_event(
-    'req-sec-a', 'entity.create', 'vendor', 'v-1', null,
+    'req-sec-a', 'entity.create', 'vendor', 'f0000000-0000-4000-8000-0000000000e1', null,
     '{"name_th": "ผู้ขาย เอ"}'::jsonb, null, null, null
   ) is not null), true, 'ผู้ใช้ A เรียก record_audit_event สำเร็จ');
 
@@ -101,7 +124,7 @@ set local request.jwt.claim.sub = 'f2222222-2222-4222-8222-222222222222';
 
 select pg_temp.assert_eq(
   (select public.record_audit_event(
-    'req-sec-b', 'entity.create', 'vendor', 'v-2', null,
+    'req-sec-b', 'entity.create', 'vendor', 'f0000000-0000-4000-8000-0000000000e1', null,
     '{"name_th": "ผู้ขาย บี"}'::jsonb, null, null, null
   ) is not null), true, 'ผู้ใช้ B เรียก record_audit_event สำเร็จ');
 
@@ -159,5 +182,105 @@ set local request.jwt.claim.sub = 'f1111111-1111-4111-8111-111111111111';
 select pg_temp.assert_eq(
   (select public.current_profile_is_active()), true,
   'security definer function อื่นยังเรียกได้ปกติแม้ authenticated ไม่มีสิทธิ์ insert audit_events ตรง');
+
+
+-- ---------------------------------------------------------------------------
+-- F-07 — ช่องทางแอปรายงานถูกจำกัด
+-- ---------------------------------------------------------------------------
+
+reset role;
+
+-- แถวที่ผ่านช่องทางนี้ติด APP_REPORTED
+select pg_temp.assert_eq(
+  (select provenance from public.audit_events where request_id = 'req-sec-a'),
+  'APP_REPORTED', 'แถวที่แอปรายงานติด provenance = APP_REPORTED');
+
+-- แถวที่ RPC ธุรกรรมเขียนเอง (user_set_roles) ติด DB_TRUSTED
+set local role authenticated;
+set local request.jwt.claim.sub = 'f1111111-1111-4111-8111-111111111111';
+select public.user_set_roles('f4444444-4444-4444-8444-444444444444', array['REQUESTER'], 'req-sec-trusted');
+reset role;
+select pg_temp.assert_eq(
+  (select provenance from public.audit_events
+   where request_id = 'req-sec-trusted' and action = 'user.roles_change'),
+  'DB_TRUSTED', 'แถวที่ RPC ธุรกรรมเขียนเองติด provenance = DB_TRUSTED');
+
+set local role authenticated;
+set local request.jwt.claim.sub = 'f1111111-1111-4111-8111-111111111111';
+
+-- action ที่ RPC ธุรกรรมเขียนเอง แอปรายงานปลอมไม่ได้ แม้เป็นผู้ดูแลระบบ
+select pg_temp.assert_fails(
+  $$select public.record_audit_event('req-forge-1', 'user.roles_change', 'profile',
+      'f4444444-4444-4444-8444-444444444444')$$,
+  'แอปรายงานเองไม่ได้', 'ปลอมเหตุการณ์เปลี่ยนสิทธิ์ (user.roles_change) ไม่ได้');
+select pg_temp.assert_fails(
+  $$select public.record_audit_event('req-forge-2', 'procurement.disburse', 'procurement',
+      'f0000000-0000-4000-8000-0000000000e1')$$,
+  'แอปรายงานเองไม่ได้', 'ปลอมเหตุการณ์เบิกจ่าย (procurement.disburse) ไม่ได้');
+select pg_temp.assert_fails(
+  $$select public.record_audit_event('req-forge-3', 'entity.create', 'stock_movement',
+      'f0000000-0000-4000-8000-0000000000e1')$$,
+  'แอปรายงานเองไม่ได้', 'ปลอมรายการเคลื่อนไหวคลัง (stock_movement) ไม่ได้');
+select pg_temp.assert_fails(
+  $$select public.record_audit_event('req-forge-4', 'document.issue', 'procurement',
+      'f0000000-0000-4000-8000-0000000000e1')$$,
+  'แอปรายงานเองไม่ได้', 'ปลอมเหตุการณ์ออกเอกสาร (document.issue) ไม่ได้');
+
+-- ต้องมีสิทธิ์ของงานนั้น: ผู้ขอรายงานการสร้างข้อมูลหลักไม่ได้
+set local request.jwt.claim.sub = 'f4444444-4444-4444-8444-444444444444';
+select pg_temp.assert_fails(
+  $$select public.record_audit_event('req-forge-5', 'entity.create', 'vendor',
+      'f0000000-0000-4000-8000-0000000000e1')$$,
+  'ไม่มีสิทธิ์รายงานเหตุการณ์', 'ผู้ที่ไม่มี masters.manage รายงานการสร้างผู้ขายไม่ได้');
+
+-- ผู้ดูแลระบบ: อ้างถึงของที่ไม่มีอยู่/รูปแบบผิดไม่ได้
+set local request.jwt.claim.sub = 'f1111111-1111-4111-8111-111111111111';
+select pg_temp.assert_fails(
+  $$select public.record_audit_event('req-forge-6', 'entity.create', 'vendor',
+      'f0000000-0000-4000-8000-00000000dead')$$,
+  'ไม่พบ vendor', 'อ้างผู้ขายที่ไม่มีอยู่ไม่ได้');
+select pg_temp.assert_fails(
+  $$select public.record_audit_event('req-forge-7', 'entity.create', 'vendor', 'not-a-uuid')$$,
+  'ต้องเป็น UUID', 'entity_id ที่ไม่ใช่ UUID ถูกปฏิเสธ');
+select pg_temp.assert_fails(
+  $$select public.record_audit_event('req-forge-8', 'entity.create', 'vendor',
+      'f0000000-0000-4000-8000-0000000000e1', null, null,
+      jsonb_build_object('blob', repeat('x', 40000)))$$,
+  'ใหญ่เกินกำหนด', 'payload ขนาดผิดปกติถูกปฏิเสธ');
+
+-- auth.password_set: รายงานได้เฉพาะของตนเอง
+select pg_temp.assert_eq(
+  (select public.record_audit_event('req-pw-self', 'auth.password_set', 'profile',
+     'f1111111-1111-4111-8111-111111111111') is not null),
+  true, 'รายงานการตั้งรหัสผ่านของตนเองได้');
+select pg_temp.assert_fails(
+  $$select public.record_audit_event('req-pw-other', 'auth.password_set', 'profile',
+      'f2222222-2222-4222-8222-222222222222')$$,
+  'เฉพาะของตนเอง', 'รายงานการตั้งรหัสผ่านของคนอื่นไม่ได้');
+
+-- report.export: ต้องมี reports.export และเป็นรายงานที่ระบบมีจริง (checksum เป็นคำบอกเล่าของแอป)
+set local request.jwt.claim.sub = 'f4444444-4444-4444-8444-444444444444';
+select pg_temp.assert_fails(
+  $$select public.record_audit_event('req-exp-1', 'report.export', 'report_export', 'budget-report')$$,
+  'ไม่มีสิทธิ์รายงานเหตุการณ์', 'ผู้ที่ไม่มี reports.export อ้างว่า export รายงานไม่ได้');
+
+set local request.jwt.claim.sub = 'f5555555-5555-4555-8555-555555555555';
+select pg_temp.assert_fails(
+  $$select public.record_audit_event('req-exp-2', 'report.export', 'report_export', 'secret-report')$$,
+  'ไม่รู้จักรายงาน', 'รายงานที่ไม่มีในระบบถูกปฏิเสธ');
+select pg_temp.assert_eq(
+  (select public.record_audit_event('req-exp-3', 'report.export', 'report_export', 'procurement-register',
+     null, null, jsonb_build_object('format', 'csv', 'checksum', 'abc')) is not null),
+  true, 'ผู้มี reports.export รายงานการ export รายงานที่มีจริงได้');
+
+reset role;
+select pg_temp.assert_eq(
+  (select provenance from public.audit_events where request_id = 'req-exp-3'),
+  'APP_REPORTED', 'การ export ที่แอปรายงานติด APP_REPORTED (checksum เป็นคำบอกเล่า ไม่ใช่ข้อพิสูจน์)');
+
+-- ความพยายามที่ถูกปฏิเสธไม่ทิ้งแถวใด ๆ
+select pg_temp.assert_eq(
+  (select count(*)::integer from public.audit_events where request_id like 'req-forge-%'),
+  0, 'ความพยายามปลอมที่ถูกปฏิเสธไม่ทิ้งแถวใดไว้');
 
 rollback;
