@@ -15,6 +15,12 @@
 
 begin;
 
+-- ตาราง procurements / procurement_items / procurement_funding_allocations ปิดการเขียนตรงจาก authenticated
+-- แล้ว (F-08) test นี้ทดสอบกติกาตอนส่งอนุมัติ จึงจัดข้อมูลตั้งต้นด้วยตัวช่วยที่รันด้วยสิทธิ์เจ้าของ
+-- (การสร้าง/บันทึกร่างจริงทดสอบใน procurement_draft_atomic_test.sql)
+create or replace function pg_temp.fx(stmt text) returns void
+language plpgsql security definer as $$ begin execute stmt; end; $$;
+
 insert into auth.users (id, email) values
   ('a1111111-1111-4111-8111-111111111111', 'submit-requester@example.test'),
   ('a2222222-2222-4222-8222-222222222222', 'submit-approver@example.test'),
@@ -123,9 +129,10 @@ $$, 'date/time field value out of range', 'F-03: วันที่ 30 กุม
 -- เตรียมรายการที่ครบถ้วน แล้วค่อยทำให้ผิดทีละอย่าง
 -- ---------------------------------------------------------------------------
 
-set local role authenticated;
-set local request.jwt.claim.sub = 'a1111111-1111-4111-8111-111111111111';
-
+-- เตรียมรายการทดสอบเป็นข้อมูลตั้งต้น (superuser) — ตาราง procurements/รายการย่อย/แหล่งเงินปิดการเขียนตรง
+-- จาก authenticated แล้ว (F-08) การสร้างจริงทดสอบใน procurement_draft_atomic_test.sql
+-- ที่นี่ทดสอบกติกาตอนส่งอนุมัติ
+select pg_temp.fx($fx$
 insert into public.procurements (
   id, subject, purpose, tax_mode, fiscal_year_id, request_date, report_date,
   classification, procurement_method, created_by
@@ -134,11 +141,14 @@ insert into public.procurements (
   'ใช้ในงานสำนักงานประจำภาคเรียน', 'EXEMPT',
   'f0000000-0000-4000-8000-000000000001', '2026-01-05', '2026-01-06',
   'GOODS', 'SPECIFIC', 'a1111111-1111-4111-8111-111111111111'
-);
+)
+$fx$);
 
+select pg_temp.fx($fx$
 insert into public.procurement_items
   (procurement_id, line_no, description, quantity, unit_price, tax_rate)
-values ('d0000000-0000-4000-8000-000000000001', 1, 'กระดาษ A4 (ตัวอย่าง)', 10, 250.00, 0);
+values ('d0000000-0000-4000-8000-000000000001', 1, 'กระดาษ A4 (ตัวอย่าง)', 10, 250.00, 0)
+$fx$);
 
 /*
  * จัดสรรงบในบทบาทเจ้าหน้าที่การเงิน
@@ -160,10 +170,12 @@ select pg_temp.assert_eq(
   pg_temp.has_rule('d0000000-0000-4000-8000-000000000001', 'FUNDING_TOTAL_MISMATCH'), true,
   'F-02: ยังไม่ผูกแหล่งเงินเลย ถูกตรวจพบ');
 
+select pg_temp.fx($fx$
 insert into public.procurement_funding_allocations
   (procurement_id, line_no, budget_account_id, amount)
 values ('d0000000-0000-4000-8000-000000000001', 1,
-        'b0000000-0000-4000-8000-000000000001', 2000.00);
+        'b0000000-0000-4000-8000-000000000001', 2000.00)
+$fx$);
 
 select pg_temp.assert_eq(
   pg_temp.has_rule('d0000000-0000-4000-8000-000000000001', 'FUNDING_TOTAL_MISMATCH'), true,
@@ -173,8 +185,10 @@ select pg_temp.assert_fails($$
   select pg_temp.submit_now('d0000000-0000-4000-8000-000000000001')
 $$, 'ยังมีข้อที่ต้องแก้', 'ส่งอนุมัติทั้งที่ยอดแหล่งเงินไม่ตรงไม่ได้');
 
+select pg_temp.fx($fx$
 update public.procurement_funding_allocations set amount = 2500.00
-where procurement_id = 'd0000000-0000-4000-8000-000000000001';
+where procurement_id = 'd0000000-0000-4000-8000-000000000001'
+$fx$);
 
 select pg_temp.assert_eq(
   pg_temp.error_count('d0000000-0000-4000-8000-000000000001'), 0,
@@ -184,30 +198,38 @@ select pg_temp.assert_eq(
 -- ช่องบังคับของรายงานขอซื้อ/ขอจ้าง
 -- ---------------------------------------------------------------------------
 
+select pg_temp.fx($fx$
 update public.procurements set purpose = null
-where id = 'd0000000-0000-4000-8000-000000000001';
+where id = 'd0000000-0000-4000-8000-000000000001'
+$fx$);
 
 select pg_temp.assert_eq(
   pg_temp.has_rule('d0000000-0000-4000-8000-000000000001', 'REQUIRED_REPORT_FIELD_MISSING'), true,
   'ขาดเหตุผลความจำเป็น ถูกตรวจพบ');
 
+select pg_temp.fx($fx$
 update public.procurements set purpose = 'ใช้ในงานสำนักงานประจำภาคเรียน', procurement_method = null
-where id = 'd0000000-0000-4000-8000-000000000001';
+where id = 'd0000000-0000-4000-8000-000000000001'
+$fx$);
 
 select pg_temp.assert_eq(
   pg_temp.has_rule('d0000000-0000-4000-8000-000000000001', 'REQUIRED_REPORT_FIELD_MISSING'), true,
   'ขาดวิธีจัดหา ถูกตรวจพบ');
 
+select pg_temp.fx($fx$
 update public.procurements set procurement_method = 'SPECIFIC'
-where id = 'd0000000-0000-4000-8000-000000000001';
+where id = 'd0000000-0000-4000-8000-000000000001'
+$fx$);
 
 -- ---------------------------------------------------------------------------
 -- F-04: วันส่งมอบเกิดก่อนวันขออนุมัติ
 -- ---------------------------------------------------------------------------
 
+select pg_temp.fx($fx$
 update public.procurements
 set request_date = '2026-02-02', report_date = '2026-02-02', delivery_or_service_date = '2026-01-31'
-where id = 'd0000000-0000-4000-8000-000000000001';
+where id = 'd0000000-0000-4000-8000-000000000001'
+$fx$);
 
 select pg_temp.assert_eq(
   pg_temp.has_rule('d0000000-0000-4000-8000-000000000001', 'DATE_REQUEST_AFTER_DELIVERY'), true,
@@ -219,17 +241,21 @@ select pg_temp.assert_fails($$
 $$, 'ยังมีข้อที่ต้องแก้', 'ผู้ไม่มีสิทธิ์ยกเว้น ส่งอนุมัติไม่ได้แม้ระบุเหตุผล');
 
 -- ขั้นกลางว่างก็ยังจับได้ — จุดสำคัญของการเทียบทุกคู่
+select pg_temp.fx($fx$
 update public.procurements
 set delivery_or_service_date = null, sent_to_finance_date = '2026-01-01'
-where id = 'd0000000-0000-4000-8000-000000000001';
+where id = 'd0000000-0000-4000-8000-000000000001'
+$fx$);
 
 select pg_temp.assert_eq(
   pg_temp.has_rule('d0000000-0000-4000-8000-000000000001', 'DATE_OUT_OF_ORDER'), true,
   'จับลำดับผิดได้แม้ขั้นกลางจะว่าง');
 
+select pg_temp.fx($fx$
 update public.procurements
 set sent_to_finance_date = null, delivery_or_service_date = '2026-01-31'
-where id = 'd0000000-0000-4000-8000-000000000001';
+where id = 'd0000000-0000-4000-8000-000000000001'
+$fx$);
 
 -- ---------------------------------------------------------------------------
 -- การยกเว้นต้องมีทั้งสิทธิ์และเหตุผล
@@ -290,6 +316,7 @@ $$, 'ส่งอนุมัติซ้ำไม่ได้', 'ส่งอ�
 -- optimistic concurrency ตอนส่งอนุมัติ
 -- ---------------------------------------------------------------------------
 
+select pg_temp.fx($fx$
 insert into public.procurements (
   id, subject, purpose, tax_mode, fiscal_year_id, request_date, report_date,
   classification, procurement_method, created_by
@@ -297,7 +324,8 @@ insert into public.procurements (
   'd0000000-0000-4000-8000-000000000002', 'จัดซื้อรอบสอง (ตัวอย่าง)', 'ทดสอบ version',
   'EXEMPT', 'f0000000-0000-4000-8000-000000000001', '2026-01-05', '2026-01-06',
   'GOODS', 'SPECIFIC', 'a2222222-2222-4222-8222-222222222222'
-);
+)
+$fx$);
 
 select pg_temp.assert_fails($$
   select public.procurement_submit('d0000000-0000-4000-8000-000000000002', 99)
