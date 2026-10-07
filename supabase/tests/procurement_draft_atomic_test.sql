@@ -460,6 +460,18 @@ select pg_temp.assert_fails(
   $$select public.procurement_save_draft('a2000000-0000-4000-8000-00000000dead', 1, '{}'::jsonb)$$,
   'permission denied', 'anon บันทึกร่างไม่ได้');
 
+-- ---------------------------------------------------------------------------
+-- 11) ห้ามฟังก์ชันใดใน public แจ้งความขัดแย้งด้วย SQLSTATE 40001 (serialization_failure)
+-- PostgREST ลองซ้ำเมื่อเจอ 40001 จน HTTP ค้าง (ยืนยันกับ 12.2.3) — ใช้ PT409 เพื่อได้ 409 ทันที
+-- ---------------------------------------------------------------------------
+
+select pg_temp.assert_eq(
+  (select coalesce(string_agg(p.oid::regprocedure::text, ', '), '')
+   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.prosrc ~* 'errcode\s*=\s*''serialization_failure'''),
+  '', 'ไม่มีฟังก์ชันใน public ที่ใช้ errcode serialization_failure (40001) แจ้งความขัดแย้ง');
+
+
 rollback;
 
 \echo 'procurement draft atomic: ทุกกรณีผ่าน'

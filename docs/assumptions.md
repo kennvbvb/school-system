@@ -646,6 +646,13 @@ service_role ยังแก้ได้ ควรพิจารณาเพิ
 และกฎตอนส่งอนุมัติอยู่ที่ `procurement_submit` ตามเดิม (3) `profiles`/ตารางข้อมูลหลัก/งบ/คลังยังเขียนตรงผ่าน policy ตามสิทธิ์ของแต่ละตาราง
 (F-11 และงานต่อเนื่อง) — PR นี้แตะเฉพาะสามตารางของร่างจัดซื้อ
 
+**ข้อค้นพบเพิ่มระหว่างทำ F-08: `SQLSTATE 40001` ทำให้ PostgREST ไม่ตอบ (migration `20261007000200`)** — RPC ที่แจ้ง "version ชน" ด้วย
+`errcode = 'serialization_failure'` (เดิม: `procurement_submit`, `procurement_transition`) ทำให้คำขอ HTTP ผ่าน PostgREST 12.2.3 **ค้างไม่ตอบ**
+(PostgREST ลองซ้ำเมื่อเจอ 40001 — ยืนยันโดยลบฟังก์ชันระหว่างคำขอค้าง คำขอจบด้วย 404 หลัง ~45 วินาที) SQL test ตรงบน PostgreSQL ไม่เห็นเพราะไม่ผ่าน
+PostgREST จึงเปลี่ยนเป็น `PT409` (PostgREST แปลง `PTnnn` เป็น HTTP nnn → 409 พร้อมข้อความไทยเดิม) และมี test ทั้งชั้น SQL (ห้ามมี errcode นี้ใน `public`) และชั้น HTTP
+(`run-register-http-tests.sh` ยืนยัน 409 ทันที) **ยังไม่ยืนยันว่า PostgREST เวอร์ชันที่ Supabase โฮสต์ลองซ้ำแบบเดียวกัน** แต่ 409 ที่ตอบทันทีถูกต้องกว่าในทุกกรณี
+ข้อควรระวัง: **ห้ามใช้ `serialization_failure` กับ RPC ที่ client เรียกผ่าน Data API** ใช้ `PT409` สำหรับความขัดแย้งแบบนี้
+
 **ยังไม่ได้รันบน PostgreSQL จริงในสภาพแวดล้อมที่พัฒนา PR นี้** เหตุผลเดียวกับ
 ข้อ 2.29 (ไม่มี Docker/Supabase CLI ในสภาพแวดล้อมนี้) — migration และ SQL test
 ผ่านการอ่านทวนมืออย่างละเอียดเทียบกับ `budget_ledger_rls.sql`/`audit_read_test.sql`

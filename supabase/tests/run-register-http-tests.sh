@@ -207,4 +207,56 @@ code="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$REST_URL/rpc/procuremen
 case "$code" in 401|403) echo "ok   anon เรียก procurement_register_result ไม่ได้ (HTTP $code)";; *) fail "anon เรียก RPC ได้/ผิดปกติ HTTP $code";; esac
 
 echo
+echo "== ผ่าน Data API: บันทึกร่างแบบ atomic และ version ชน (F-08) =="
+
+DRAFT_PAYLOAD='{"subject": "ร่างทดสอบผ่าน HTTP (ตัวอย่าง)", "tax_mode": "EXEMPT",
+  "fiscal_year_id": "c4000000-0000-4000-8000-0000000000f1", "request_date": "1987-03-10",
+  "is_emergency": false,
+  "items": [{"line_no": 1, "description": "ปากกา (ตัวอย่าง)", "quantity": "2", "unit_price": "10.50"}],
+  "funding_allocations": []}'
+
+created="$(curl -sS -f -m 20 -X POST "$REST_URL/rpc/procurement_create_draft" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ACCESS_TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"p_payload\": $DRAFT_PAYLOAD, \"p_request_id\": \"http-draft-create\"}")" \
+  || fail "สร้างร่างผ่าน Data API ไม่สำเร็จ"
+draft_id="$(echo "$created" | jq -r '.id')"
+[ "$(echo "$created" | jq -r '.version')" = "1" ] || fail "ร่างใหม่ควรเริ่มที่ version 1: $created"
+echo "ok   สร้างร่างผ่าน RPC ได้ (version 1)"
+
+saved="$(curl -sS -f -m 20 -X POST "$REST_URL/rpc/procurement_save_draft" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ACCESS_TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"p_procurement_id\": \"$draft_id\", \"p_expected_version\": 1, \"p_payload\": $DRAFT_PAYLOAD, \"p_request_id\": \"http-draft-save\"}")" \
+  || fail "บันทึกร่างผ่าน Data API ไม่สำเร็จ"
+[ "$(echo "$saved" | jq -r '.version')" = "2" ] || fail "บันทึกหนึ่งครั้งควรได้ version 2: $saved"
+echo "ok   บันทึกร่างด้วย version ที่ถูกต้อง ได้ version 2"
+
+# version เก่า: ต้องได้ 409 พร้อมข้อความไทย **ภายในไม่กี่วินาที** — เคยค้างไม่ตอบเมื่อใช้ SQLSTATE 40001
+# (PostgREST ลองซ้ำไม่จบ) -m 20 ทำให้ถ้ากลับไปค้างอีก test นี้ล้มแทนที่จะค้างทั้ง job
+stale_body="$(mktemp)"
+stale_code="$(curl -s -m 20 -o "$stale_body" -w '%{http_code}' -X POST "$REST_URL/rpc/procurement_save_draft" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ACCESS_TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"p_procurement_id\": \"$draft_id\", \"p_expected_version\": 1, \"p_payload\": $DRAFT_PAYLOAD, \"p_request_id\": \"http-draft-stale\"}")" || stale_code="timeout"
+[ "$stale_code" = "409" ] || { cat "$stale_body"; fail "บันทึกด้วย version เก่าควรได้ HTTP 409 แต่ได้ $stale_code"; }
+grep -q 'มีผู้อื่นแก้ไขรายการนี้ไปแล้ว' "$stale_body" || { cat "$stale_body"; fail "409 ต้องมีข้อความภาษาไทยให้ผู้ใช้โหลดหน้าใหม่"; }
+echo "ok   บันทึกด้วย version เก่าได้ 409 พร้อมข้อความไทยทันที (ไม่ค้าง)"
+
+# procurement_submit เดิมก็แจ้ง version ชนด้วย 40001 (migration 20261007000200 เปลี่ยนเป็น PT409) — ยืนยันผ่าน HTTP จริง
+submit_body="$(mktemp)"
+submit_code="$(curl -s -m 20 -o "$submit_body" -w '%{http_code}' -X POST "$REST_URL/rpc/procurement_submit" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ACCESS_TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"p_procurement_id\": \"$draft_id\", \"p_expected_version\": 1, \"p_request_id\": \"http-submit-stale\"}")" || submit_code="timeout"
+[ "$submit_code" = "409" ] || { cat "$submit_body"; fail "ส่งอนุมัติด้วย version เก่าควรได้ HTTP 409 แต่ได้ $submit_code"; }
+echo "ok   ส่งอนุมัติด้วย version เก่าได้ 409 ทันที (ไม่ค้าง)"
+
+# เขียนตารางตรงถูกปฏิเสธที่ระดับสิทธิ์ ไม่ใช่แค่ RLS
+code="$(curl -s -m 20 -o /dev/null -w '%{http_code}' -X PATCH "$REST_URL/procurements?id=eq.$draft_id" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ACCESS_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"status": "APPROVED"}')"
+case "$code" in 401|403) echo "ok   PATCH procurements ตรงถูกปฏิเสธ (HTTP $code)";; *) fail "PATCH ตรงควรถูกปฏิเสธ แต่ได้ HTTP $code";; esac
+code="$(curl -s -m 20 -o /dev/null -w '%{http_code}' -X POST "$REST_URL/procurement_items" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ACCESS_TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"procurement_id\": \"$draft_id\", \"line_no\": 9, \"description\": \"เขียนตรง\", \"quantity\": 1, \"unit_price\": 1}")"
+case "$code" in 401|403) echo "ok   POST procurement_items ตรงถูกปฏิเสธ (HTTP $code)";; *) fail "POST รายการย่อยตรงควรถูกปฏิเสธ แต่ได้ HTTP $code";; esac
+
+echo
 echo "ผ่านทั้งหมด"
