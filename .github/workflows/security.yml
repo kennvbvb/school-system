@@ -27,7 +27,11 @@ jobs:
 
       - run: npm ci
 
-      - name: npm audit (บล็อกเมื่อพบระดับ high ขึ้นไป)
+      - name: npm audit แพ็กเกจที่ขึ้นเว็บจริง (บล็อกเมื่อพบระดับ high ขึ้นไป)
+        # ตรวจเฉพาะ dependencies ที่ถูกส่งไปกับระบบจริง (--omit=dev) เพราะช่องโหว่ในเครื่องมือ dev
+        # (lint, test, build) ไม่ถึงผู้ใช้ และบางรายการยังไม่มีรุ่นที่แก้ให้อัปเกรด ทำให้ CI แดงทุก PR
+        # โดยแก้ไม่ได้ จนทีมชินกับสีแดง — ส่วน dev ตรวจในขั้นถัดไปแบบเตือน ไม่ทิ้งเงียบ ๆ
+        #
         # แยก "พบช่องโหว่" ออกจาก "ติดต่อ registry ไม่ได้" ให้ชัดเจน
         #
         # ช่องโหว่ระดับ high ขึ้นไป -> ล้ม build เสมอ ไม่มีการผ่อนผัน
@@ -39,9 +43,9 @@ jobs:
           set -uo pipefail
 
           for attempt in 1 2 3; do
-            output=$(npm audit --audit-level=high 2>&1) && {
+            output=$(npm audit --omit=dev --audit-level=high 2>&1) && {
               echo "$output"
-              echo "ไม่พบช่องโหว่ระดับ high ขึ้นไป"
+              echo "ไม่พบช่องโหว่ระดับ high ขึ้นไปในแพ็กเกจที่ขึ้นเว็บจริง"
               exit 0
             }
 
@@ -54,9 +58,22 @@ jobs:
               exit 0
             fi
 
-            echo "::error::พบช่องโหว่ระดับ high ขึ้นไปใน dependency"
+            echo "::error::พบช่องโหว่ระดับ high ขึ้นไปในแพ็กเกจที่ขึ้นเว็บจริง"
             exit 1
           done
+
+      - name: npm audit เครื่องมือ dev (เตือนอย่างเดียว ไม่บล็อก)
+        # ช่องโหว่ในเครื่องมือ dev ยังต้องเห็นและติดตามทุกรอบ แต่ไม่บล็อก PR
+        # เพราะไม่ถึงระบบจริง และบางรายการไม่มีรุ่นแก้ (เช่น braces ผ่าน eslint-config-next)
+        # ถ้ามีรุ่นแก้ออกมาแล้ว ให้อัปเกรดเมื่อเห็นคำเตือนนี้
+        run: |
+          set -uo pipefail
+          if output=$(npm audit --audit-level=high 2>&1); then
+            echo "$output"
+          else
+            echo "$output"
+            echo "::warning::พบช่องโหว่ระดับ high ในเครื่องมือ dev (ไม่ถึงระบบจริง) — ดูรายละเอียดด้านบนและอัปเกรดเมื่อมีรุ่นแก้"
+          fi
 
   secrets:
     name: Secret scan
