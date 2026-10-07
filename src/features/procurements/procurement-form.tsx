@@ -140,11 +140,14 @@ export function ProcurementForm({
   options,
   onSubmit,
   submitLabel,
+  fiscalYearLocked = false,
 }: {
   initialValues: ProcurementFormValues;
   options: ProcurementFormOptions;
   onSubmit: (values: ProcurementFormValues) => Promise<SubmitResult>;
   submitLabel: string;
+  /** true = แสดงปีงบประมาณแต่แก้ไม่ได้ (ฟอร์มแก้ไขร่าง) — ฐานข้อมูลปฏิเสธการเปลี่ยนปีหลังสร้างอยู่แล้ว */
+  fiscalYearLocked?: boolean;
 }) {
   const router = useRouter();
   const errorId = useId();
@@ -297,7 +300,9 @@ export function ProcurementForm({
               required
               value={values.fiscalYearId}
               onChange={(event) => update('fiscalYearId', event.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2"
+              disabled={fiscalYearLocked}
+              aria-describedby={fiscalYearLocked ? `${errorId}-fy-locked` : undefined}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 disabled:bg-slate-100 disabled:text-slate-600"
             >
               <option value="">— เลือก —</option>
               {options.fiscalYears.map((option) => (
@@ -306,6 +311,12 @@ export function ProcurementForm({
                 </option>
               ))}
             </select>
+            {fiscalYearLocked ? (
+              <span id={`${errorId}-fy-locked`} className="mt-1 block text-sm text-slate-600">
+                แก้ปีงบประมาณไม่ได้หลังสร้างร่าง เพราะแหล่งเงินผูกกับบัญชีงบของปีนั้น
+                หากเลือกปีผิดให้สร้างร่างใหม่
+              </span>
+            ) : null}
             {fieldError('fiscalYearId') ? (
               <span className="mt-1 block text-sm text-rose-700">{fieldError('fiscalYearId')}</span>
             ) : null}

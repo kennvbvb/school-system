@@ -23,6 +23,7 @@ export function EditProcurementForm({
       submitLabel="บันทึกการแก้ไข"
       onSubmit={action}
       initialValues={initialValues}
+      fiscalYearLocked
     />
   );
 }

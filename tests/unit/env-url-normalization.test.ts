@@ -1,10 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   REQUIRED_PUBLIC_ENV_VARS,
   findInvalidPublicEnvVars,
+  parsePublicEnv,
   publicEnvSchema,
   urlField,
 } from '@/lib/env/required';
+import { normalizeUrlValue } from '@/lib/env/normalize-url';
 
 /**
  * เดิม env schema ใช้ z.url() ตรง ๆ ซึ่งปฏิเสธค่าที่ไม่มี scheme
@@ -159,5 +161,73 @@ describe('รายการตัวแปรที่บังคับ', () =
     for (const variable of REQUIRED_PUBLIC_ENV_VARS) {
       expect(example).toContain(variable.name);
     }
+  });
+});
+
+/*
+ * F-11: validator เติม scheme ให้ แต่ proxy และ CSP เคยอ่านค่าดิบจาก process.env
+ * ค่า "abc.supabase.co" จึงผ่านด่านตรวจแล้วพังที่ปลายทาง — ทุกที่ต้องใช้ค่าที่ normalize แล้ว
+ */
+describe('normalizeUrlValue', () => {
+  it('เป็นกติกาเดียวกับ urlField', () => {
+    for (const value of [
+      'abc.supabase.co',
+      ' https://abc.supabase.co/ ',
+      'http://localhost:3000',
+    ]) {
+      expect(normalizeUrlValue(value)).toBe(urlField.parse(value));
+    }
+  });
+});
+
+describe('parsePublicEnv', () => {
+  const raw: Record<string, string> = {
+    NEXT_PUBLIC_APP_URL: 'my-app.vercel.app/',
+    NEXT_PUBLIC_SUPABASE_URL: 'abcdefgh.supabase.co',
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: '  anon-key  ',
+  };
+
+  it('คืนค่าที่ normalize แล้ว ไม่ใช่ค่าดิบ — ค่านี้คือสิ่งที่ proxy ใช้สร้าง Supabase client', () => {
+    expect(parsePublicEnv((name) => raw[name])).toEqual({
+      NEXT_PUBLIC_APP_URL: 'https://my-app.vercel.app',
+      NEXT_PUBLIC_SUPABASE_URL: 'https://abcdefgh.supabase.co',
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: 'anon-key',
+    });
+  });
+
+  it('คืน null เมื่อใช้ไม่ได้ ตรงกับที่ findInvalidPublicEnvVars รายงาน', () => {
+    expect(parsePublicEnv((name) => (name === 'NEXT_PUBLIC_APP_URL' ? '' : raw[name]))).toBeNull();
+    expect(parsePublicEnv(() => undefined)).toBeNull();
+  });
+});
+
+describe('CSP ใน next.config.ts อ่าน env แบบเดียวกัน', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  async function connectSrcFor(supabaseUrl: string): Promise<string> {
+    vi.resetModules();
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', supabaseUrl);
+    const config = (await import('../../next.config')).default;
+    const rules = await config.headers!();
+    const csp = rules[0]!.headers.find((h) => h.key === 'Content-Security-Policy')!.value;
+    return csp.split('; ').find((directive) => directive.startsWith('connect-src'))!;
+  }
+
+  it('ค่าที่ไม่มี scheme ยังอนุญาต origin ของ Supabase (เดิมได้แค่ self ทำให้เบราว์เซอร์ต่อไม่ได้)', async () => {
+    expect(await connectSrcFor('abcdefgh.supabase.co')).toBe(
+      "connect-src 'self' https://abcdefgh.supabase.co",
+    );
+  });
+
+  it('ค่าที่มี scheme และ "/" ท้ายได้ origin เดิม', async () => {
+    expect(await connectSrcFor('https://abcdefgh.supabase.co/')).toBe(
+      "connect-src 'self' https://abcdefgh.supabase.co",
+    );
+    expect(await connectSrcFor('http://127.0.0.1:54321')).toBe(
+      "connect-src 'self' http://127.0.0.1:54321",
+    );
   });
 });

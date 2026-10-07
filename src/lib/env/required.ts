@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { normalizeUrlValue } from './normalize-url';
 
 /**
  * ตัวแปร environment ที่ระบบต้องมีจึงจะทำงานได้ พร้อมกติกาตรวจค่าและคำแนะนำภาษาไทย
@@ -40,26 +41,13 @@ export const REQUIRED_PUBLIC_ENV_VARS: readonly RequiredEnvVar[] = [
 ];
 
 /**
- * URL ที่ยอมรับค่าที่ไม่มี scheme แล้วเติม https:// ให้
- *
- * Vercel และ Supabase แสดง URL ในหน้า dashboard โดยไม่มี scheme
- * (เช่น "abc.vercel.app" หรือ "abc.supabase.co") คนที่คัดลอกมาวางตรง ๆ
- * จึงได้ค่าที่ z.url() ปฏิเสธ ทั้งที่เจตนาชัดเจนอยู่แล้ว
- *
- * การเติม https:// ให้ปลอดภัย เพราะทั้งสองบริการให้บริการผ่าน https เท่านั้น
- * ส่วนการพัฒนาในเครื่องใช้ http://localhost ซึ่งมี scheme อยู่แล้วจึงไม่ถูกแตะ
- *
- * ลำดับสำคัญ: ต้องเติม scheme ก่อนแล้วค่อยตัด "/" ท้าย ถ้าตัดก่อนค่าอย่าง
- * "https://" จะเหลือ "https:" ซึ่งหลุดกติกา scheme แล้วถูกเติมซ้ำเป็น
- * "https://https:" ที่นับเป็น URL ถูกต้องทั้งที่ผู้ดูแลยังกรอกไม่เสร็จ
+ * URL ที่ยอมรับค่าที่ไม่มี scheme แล้วเติม https:// ให้ — กติกาอยู่ที่ normalizeUrlValue
+ * (แยกไฟล์เพื่อให้ next.config.ts ใช้ร่วมได้โดยไม่ต้องดึง zod เข้าไปด้วย)
  */
-export const urlField = z.preprocess((value) => {
-  if (typeof value !== 'string') return value;
-  const trimmed = value.trim();
-  if (trimmed === '') return trimmed;
-  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-  return withScheme.replace(/\/+$/, '');
-}, z.url());
+export const urlField = z.preprocess(
+  (value) => (typeof value === 'string' ? normalizeUrlValue(value) : value),
+  z.url(),
+);
 
 /**
  * ค่าที่บังคับและต้องไม่เป็นช่องว่างล้วน
@@ -105,4 +93,21 @@ export function findInvalidPublicEnvVars(read: (name: string) => string | undefi
   return REQUIRED_PUBLIC_ENV_VARS.filter((variable) => invalid.has(variable.name)).map(
     (variable) => variable.name,
   );
+}
+
+/**
+ * อ่านตัวแปรสาธารณะแบบ "ผ่าน schema แล้ว" — คืนค่าที่ normalize แล้ว หรือ null ถ้าใช้ไม่ได้
+ *
+ * proxy ต้องใช้ค่านี้ในการสร้าง Supabase client แทนการอ่าน process.env ตรง ๆ
+ * เพราะ findInvalidPublicEnvVars ยอมรับ "abc.supabase.co" (ไม่มี scheme) ถ้า proxy เอาค่าดิบ
+ * ไปใช้ต่อ จะผ่านด่านตรวจแล้วพังตอนสร้าง client ส่วน server/client ใช้ค่าที่ normalize แล้วอยู่ก่อน
+ */
+export function parsePublicEnv(
+  read: (name: string) => string | undefined,
+): z.infer<typeof publicEnvSchema> | null {
+  const values = Object.fromEntries(
+    REQUIRED_PUBLIC_ENV_VARS.map((variable) => [variable.name, read(variable.name)]),
+  );
+  const parsed = publicEnvSchema.safeParse(values);
+  return parsed.success ? parsed.data : null;
 }

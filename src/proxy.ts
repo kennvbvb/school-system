@@ -7,7 +7,7 @@ import {
   generateRequestId,
   sanitizeRequestId,
 } from '@/lib/request-id';
-import { findInvalidPublicEnvVars } from '@/lib/env/required';
+import { findInvalidPublicEnvVars, parsePublicEnv } from '@/lib/env/required';
 
 /**
  * Proxy (เดิมชื่อ middleware) ทำสี่อย่าง:
@@ -76,8 +76,14 @@ export default async function proxy(request: NextRequest) {
     return NextResponse.redirect(homeUrl);
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string;
+  // ใช้ค่าที่ผ่าน schema และ normalize แล้ว ไม่ใช่ค่าดิบ — ค่าที่ไม่มี scheme ผ่านด่านตรวจด้านบน
+  // แต่ createServerClient ใช้ไม่ได้ ตรงกับที่ server/client ใช้อยู่แล้ว
+  const publicEnv = parsePublicEnv((name) => process.env[name]);
+  if (!publicEnv) {
+    throw new Error('ตั้งค่า NEXT_PUBLIC_* ไม่ถูกต้อง');
+  }
+  const supabaseUrl = publicEnv.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = publicEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {
