@@ -37,7 +37,9 @@ insert into public.profiles (id, email, first_name_th, last_name_th, is_active) 
   ('$REQUESTER', 'invc-req-$RUN_ID@example.test', 'ทดสอบ', 'ผู้เบิก', true),
   ('$APPROVER',  'invc-app-$RUN_ID@example.test', 'ทดสอบ', 'ผู้อนุมัติ', true);
 
-insert into public.user_roles (user_id, role_code) values ('$OFFICER', 'INVENTORY_OFFICER');
+insert into public.user_roles (user_id, role_code) values
+  ('$OFFICER', 'INVENTORY_OFFICER'),
+  ('$APPROVER', 'APPROVER');
 
 insert into public.units (id, code, name_th) values ('$UNIT', 'UNIT-INVC-$RUN_ID', 'ชิ้น (ทดสอบพร้อมกัน)');
 

@@ -45,6 +45,7 @@ insert into public.permissions (code, description_th) values
   ('inventory.receive',       'บันทึกรับเข้าพัสดุ'),
   ('inventory.issue',         'เบิกวัสดุ'),
   ('inventory.adjust',        'ปรับยอดคงเหลือ'),
+  ('inventory.approve',       'อนุมัติการเบิกจ่ายและการปรับยอดคลัง'),
   ('assets.read',             'ดูทะเบียนครุภัณฑ์'),
   ('assets.manage',           'จัดการทะเบียนครุภัณฑ์'),
   ('reports.export',          'ส่งออกรายงาน'),
@@ -112,6 +113,7 @@ insert into public.role_permissions (role_code, permission_code) values
   ('APPROVER', 'procurement.approve'),
   ('APPROVER', 'procurement.override_validation'),
   ('APPROVER', 'budget.read'),
+  ('APPROVER', 'inventory.approve'),
   ('APPROVER', 'documents.preview'),
 
   ('FINANCE', 'masters.read'),

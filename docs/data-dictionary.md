@@ -1137,8 +1137,14 @@ check constraint บังคับความสมบูรณ์ของแ
 สิทธิ์ที่ต้องใช้ต่อชนิดรายการถูกเลือกใน `stock_post_movement()` เอง
 (ไม่ใช่ที่ RLS เพราะไม่มี insert policy อยู่แล้ว): `ISSUE` → `inventory.issue`,
 `ADJUSTMENT_*`/`REVERSAL` → `inventory.adjust`, ที่เหลือ (`RECEIPT`/`RETURN`/
-`OPENING_BALANCE`) → `inventory.receive` — ทั้งสี่สิทธิ์ประกาศไว้ล่วงหน้าแล้ว
-ใน `src/domain/auth/permissions.ts` ตั้งแต่รอบก่อน ไม่ต้องเพิ่มสิทธิ์ใหม่
+`OPENING_BALANCE`) → `inventory.receive`
+
+**ผู้เบิก/ผู้อนุมัติ (migration `20261007000300`)** — `ISSUE` ต้องมี `requested_by` และ
+`approved_by`; `ADJUSTMENT_*` ต้องมี `approved_by` ฐานข้อมูลตรวจใน `stock_post_movement()` ว่า
+ผู้อนุมัติ active และถือสิทธิ์ `inventory.approve` (ค่าเริ่มต้น: `APPROVER`, `SYSTEM_ADMIN`),
+ผู้เบิก active, และผู้เบิกกับผู้อนุมัติเป็นคนละคน รายชื่อที่ UI ให้เลือกมาจาก RPC
+`inventory_staff_directory()` (คืน id, display_name, employee_code, can_approve ของผู้ใช้ที่
+active เท่านั้น — เปิดให้ผู้ถือ `inventory.issue` หรือ `inventory.adjust`)
 
 ### สิ่งที่ยังไม่ได้ทำ
 

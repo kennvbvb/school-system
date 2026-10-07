@@ -53,7 +53,7 @@ export default async function InventoryItemPage({ params }: { params: Promise<{ 
 
   const [movements, actors] = await Promise.all([
     listStockMovements(item.id),
-    canIssue || canAdjust ? loadActorOptions() : Promise.resolve([]),
+    canIssue || canAdjust ? loadActorOptions() : Promise.resolve({ requesters: [], approvers: [] }),
   ]);
 
   const today = toBangkokDateString(new Date());
@@ -147,7 +147,13 @@ export default async function InventoryItemPage({ params }: { params: Promise<{ 
               <h2 id="issue-heading" className="mb-4 text-lg font-semibold">
                 เบิกจ่าย
               </h2>
-              <IssueForm itemId={item.id} defaultDate={today} actors={actors} action={issueStock} />
+              <IssueForm
+                itemId={item.id}
+                defaultDate={today}
+                requesters={actors.requesters}
+                approvers={actors.approvers}
+                action={issueStock}
+              />
             </section>
           ) : null}
 
@@ -162,7 +168,7 @@ export default async function InventoryItemPage({ params }: { params: Promise<{ 
               <AdjustmentForm
                 itemId={item.id}
                 defaultDate={today}
-                actors={actors}
+                approvers={actors.approvers}
                 action={adjustStock}
               />
             </section>

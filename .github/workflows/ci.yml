@@ -190,6 +190,11 @@ jobs:
         # และคำขอพร้อมกันหลาย session ต้องไม่ทำให้ลำดับชนหรือยอดติดลบ
         run: supabase/tests/run-inventory-tests.sh "$DB_URL"
 
+      - name: ทดสอบรายชื่อผู้เบิก/ผู้อนุมัติและอำนาจผู้อนุมัติของคลัง (F-05)
+        # ผู้อนุมัติต้อง active และถือ inventory.approve, ผู้เบิกต้อง active, ผู้เบิกกับผู้อนุมัติต้องเป็นคนละคน
+        # ตรวจในฐานข้อมูล — เรียก RPC ตรงก็เลี่ยงไม่ได้; รายชื่อคืนเฉพาะคอลัมน์ที่จำเป็นและ anon เรียกไม่ได้
+        run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/inventory_staff_approval_test.sql
+
   register-http:
     name: Register completeness through PostgREST
     runs-on: ubuntu-latest

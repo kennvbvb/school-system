@@ -105,6 +105,20 @@ describe('stockIssueSchema', () => {
       stockIssueSchema.safeParse({ ...base, requestedBy: USER_A, approvedBy: USER_B }).success,
     ).toBe(true);
   });
+
+  it('ผู้เบิกกับผู้อนุมัติเป็นคนเดียวกันไม่ได้', () => {
+    const result = stockIssueSchema.safeParse({
+      itemId: ITEM_ID,
+      quantity: '1',
+      effectiveDate: '2026-01-15',
+      reference: 'REQ-001',
+      requestedBy: USER_A,
+      approvedBy: USER_A,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.path).toEqual(['approvedBy']);
+  });
 });
 
 describe('stockAdjustmentSchema', () => {
