@@ -1141,7 +1141,7 @@ check constraint บังคับความสมบูรณ์ของแ
 
 **ผู้เบิก/ผู้อนุมัติ (migration `20261007000300`)** — `ISSUE` ต้องมี `requested_by` และ
 `approved_by`; `ADJUSTMENT_*` ต้องมี `approved_by` ฐานข้อมูลตรวจใน `stock_post_movement()` ว่า
-ผู้อนุมัติ active และถือสิทธิ์ `inventory.approve` (ค่าเริ่มต้น: `APPROVER`, `SYSTEM_ADMIN`),
+ผู้อนุมัติ active และถือสิทธิ์ `inventory.approve` (ค่าเริ่มต้น: `PROCUREMENT_OFFICER` ซึ่งโรงเรียนระบุว่า "หัวหน้าเจ้าหน้าที่พัสดุ" และ "เจ้าหน้าที่พัสดุ" อนุมัติได้ — Q36, และ `SYSTEM_ADMIN`),
 ผู้เบิก active, และผู้เบิกกับผู้อนุมัติเป็นคนละคน รายชื่อที่ UI ให้เลือกมาจาก RPC
 `inventory_staff_directory()` (คืน id, display_name, employee_code, can_approve ของผู้ใช้ที่
 active เท่านั้น — เปิดให้ผู้ถือ `inventory.issue` หรือ `inventory.adjust`)

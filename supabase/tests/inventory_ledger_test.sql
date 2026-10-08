@@ -65,7 +65,7 @@ insert into public.profiles (id, email, first_name_th, last_name_th, is_active) 
 
 insert into public.user_roles (user_id, role_code) values
   ('b1111111-1111-4111-8111-111111111111', 'INVENTORY_OFFICER'),
-  ('b3333333-3333-4333-8333-333333333333', 'APPROVER'),
+  ('b3333333-3333-4333-8333-333333333333', 'PROCUREMENT_OFFICER'),
   ('b4444444-4444-4444-8444-444444444444', 'REQUESTER');
 
 insert into public.units (id, code, name_th) values

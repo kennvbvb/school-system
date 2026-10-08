@@ -39,7 +39,7 @@ insert into public.profiles (id, email, first_name_th, last_name_th, is_active) 
 
 insert into public.user_roles (user_id, role_code) values
   ('$OFFICER', 'INVENTORY_OFFICER'),
-  ('$APPROVER', 'APPROVER');
+  ('$APPROVER', 'PROCUREMENT_OFFICER');
 
 insert into public.units (id, code, name_th) values ('$UNIT', 'UNIT-INVC-$RUN_ID', 'ชิ้น (ทดสอบพร้อมกัน)');
 
