@@ -83,6 +83,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Readonly<Record<RoleCode, readonly Permis
     'documents.print',
     'inventory.read',
     'inventory.receive',
+    'inventory.approve',
     'assets.read',
     'reports.export',
   ],
@@ -107,7 +108,6 @@ export const DEFAULT_ROLE_PERMISSIONS: Readonly<Record<RoleCode, readonly Permis
     'procurement.approve',
     'procurement.override_validation',
     'budget.read',
-    'inventory.approve',
     'documents.preview',
   ],
   FINANCE: [

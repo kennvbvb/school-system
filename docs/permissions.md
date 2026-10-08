@@ -50,7 +50,7 @@
 | `inventory.receive`               |   ●   |  ●   |     |     |      |     |  ●  |     |
 | `inventory.issue`                 |   ●   |      |     |     |      |     |  ●  |     |
 | `inventory.adjust`                |   ●   |      |     |     |      |     |  ●  |     |
-| `inventory.approve`               |   ●   |      |     |     |  ●   |     |     |     |
+| `inventory.approve`               |   ●   |  ●   |     |     |      |     |     |     |
 | `assets.read`                     |   ●   |  ●   |     |     |      |     |  ●  |  ●  |
 | `assets.manage`                   |   ●   |      |     |     |      |     |  ●  |     |
 | `reports.export`                  |   ●   |  ●   |     |     |      |  ●  |  ●  |  ●  |

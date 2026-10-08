@@ -92,6 +92,7 @@ insert into public.role_permissions (role_code, permission_code) values
   ('PROCUREMENT_OFFICER', 'documents.print'),
   ('PROCUREMENT_OFFICER', 'inventory.read'),
   ('PROCUREMENT_OFFICER', 'inventory.receive'),
+  ('PROCUREMENT_OFFICER', 'inventory.approve'),
   ('PROCUREMENT_OFFICER', 'assets.read'),
   ('PROCUREMENT_OFFICER', 'reports.export'),
 
@@ -113,7 +114,6 @@ insert into public.role_permissions (role_code, permission_code) values
   ('APPROVER', 'procurement.approve'),
   ('APPROVER', 'procurement.override_validation'),
   ('APPROVER', 'budget.read'),
-  ('APPROVER', 'inventory.approve'),
   ('APPROVER', 'documents.preview'),
 
   ('FINANCE', 'masters.read'),
