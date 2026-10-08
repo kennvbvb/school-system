@@ -1,4 +1,5 @@
 import type { NextConfig } from 'next';
+import { normalizeUrlValue } from './src/lib/env/normalize-url';
 
 /**
  * Security headers applied to every response.
@@ -20,12 +21,16 @@ const scriptSrc =
  *   1. ตอนพัฒนาในเครื่อง Supabase อยู่ที่ http://127.0.0.1:54321 ซึ่ง wildcard ไม่ครอบคลุม
  *      ถ้าไม่อ่านจากค่าตั้ง การเข้าสู่ระบบใน local จะถูก CSP บล็อกทั้งหมด
  *   2. ใน production การระบุ origin ของโครงการตัวเดียวรัดกุมกว่าการเปิดทุก subdomain
+ *
+ * ค่า env ผ่าน normalizeUrlValue ก่อนเสมอ ให้ตรงกับที่ proxy/server/client ใช้
  */
 function supabaseOrigin(): string {
   const raw = process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (!raw) return '';
   try {
-    return new URL(raw).origin;
+    // normalize แบบเดียวกับ schema ของ env — ไม่เช่นนั้นค่าที่ไม่มี scheme ("abc.supabase.co")
+    // ทำให้ new URL() ล้ม CSP ไม่อนุญาต Supabase และเบราว์เซอร์ต่อ Supabase ไม่ได้
+    return new URL(normalizeUrlValue(raw)).origin;
   } catch {
     return '';
   }

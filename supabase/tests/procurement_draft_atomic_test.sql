@@ -218,8 +218,8 @@ create temp table saved as
     pg_temp.payload('แก้เรื่องใหม่ (ตัวอย่าง)',
       '[{"line_no":1,"description":"ปากกา (ตัวอย่าง)","quantity":"10","unit_price":"15"}]',
       '[{"line_no":1,"budget_account_id":"a2000000-0000-4000-8000-0000000000b1","amount":"150"}]',
-      -- fiscal_year_id ใน payload ของการบันทึกต้องถูกเมิน (ปีงบเปลี่ยนไม่ได้)
-      jsonb_build_object('fiscal_year_id', 'a2000000-0000-4000-8000-0000000000f2')),
+      -- ส่งปีงบเดิมมาตามที่ฟอร์มส่งเสมอ ไม่ถือว่าแก้ (ถ้าเป็นปีอื่นจะถูกปฏิเสธ — ดูข้างล่าง, F-11)
+      jsonb_build_object('fiscal_year_id', 'a2000000-0000-4000-8000-0000000000f1')),
     'req-da-save') as r;
 grant select on saved to authenticated;
 
@@ -242,6 +242,22 @@ select pg_temp.assert_eq(
 select pg_temp.assert_eq(
   (select updated_by from public.procurements where id = (select (r ->> 'id')::uuid from made)),
   'a1000000-0000-4000-8000-000000000002'::uuid, 'updated_by มาจากผู้เรียกจริง');
+
+-- F-11: ปีงบประมาณแก้ไม่ได้หลังสร้างร่าง — ปฏิเสธชัดเจน ไม่เมินเงียบ ๆ และไม่เพิ่ม version
+select pg_temp.assert_fails(
+  format($$select public.procurement_save_draft(%L::uuid, 2,
+    pg_temp.payload('เปลี่ยนปี (ตัวอย่าง)',
+      '[{"line_no":1,"description":"ปากกา (ตัวอย่าง)","quantity":"10","unit_price":"15"}]',
+      '[{"line_no":1,"budget_account_id":"a2000000-0000-4000-8000-0000000000b1","amount":"150"}]',
+      jsonb_build_object('fiscal_year_id', 'a2000000-0000-4000-8000-0000000000f2')),
+    'req-da-fy')$$, (select (r ->> 'id') from made)),
+  'ปีงบประมาณแก้ไม่ได้หลังสร้างร่าง', 'F-11 บันทึกพร้อมเปลี่ยนปีงบถูกปฏิเสธ');
+select pg_temp.assert_eq(
+  (select version from public.procurements where id = (select (r ->> 'id')::uuid from made)),
+  2, 'F-11 คำขอที่ถูกปฏิเสธไม่เพิ่ม version และไม่แก้หัวเอกสาร');
+select pg_temp.assert_eq(
+  (select subject from public.procurements where id = (select (r ->> 'id')::uuid from made)),
+  'แก้เรื่องใหม่ (ตัวอย่าง)', 'F-11 คำขอที่ถูกปฏิเสธไม่แก้หัวเอกสาร');
 
 reset role;
 select pg_temp.assert_eq(

@@ -6,8 +6,11 @@ import type { ProcurementDraftInput } from '@/domain/procurement/schemas';
  *
  * RPC เขียนแม่ + รายการย่อย + แหล่งเงิน + audit ใน transaction เดียว จึงรับ payload ก้อนเดียวเป็น jsonb
  *
- * **ไม่ส่ง** ผู้สร้าง สถานะ เวลา version ปีงบ (ตอนบันทึก) หรือยอดเงินใด ๆ — ฟิลด์เหล่านี้ฐานข้อมูลกำหนดเอง
+ * **ไม่ส่ง** ผู้สร้าง สถานะ เวลา version หรือยอดเงินใด ๆ — ฟิลด์เหล่านี้ฐานข้อมูลกำหนดเอง
  * RPC เมินคีย์เหล่านั้นอยู่แล้ว แต่ไม่ส่งตั้งแต่ต้นทำให้ไม่มีใครเข้าใจผิดว่าตั้งได้
+ *
+ * ปีงบประมาณ (`fiscal_year_id`) ส่งทั้งตอนสร้างและตอนบันทึก แต่ตอนบันทึก RPC ปฏิเสธถ้าไม่ตรงกับปีเดิม
+ * (F-11 — ปีแก้ไม่ได้หลังสร้างร่าง) ฟอร์มแก้ไขจึงล็อกช่องนี้ไว้
  * ค่าว่างส่งเป็น null (ไม่ใช่ undefined) เพราะ JSON.stringify ทิ้ง undefined ทำให้คีย์หายแทนที่จะล้างค่า
  */
 export function toDraftPayload(input: ProcurementDraftInput): Record<string, unknown> {
