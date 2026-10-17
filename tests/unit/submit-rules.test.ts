@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { weekdaysAfter } from '@/domain/procurement/value-tier';
 import { checkSubmitRules } from '@/domain/procurement/submit-rules';
 import { procurementDraftSchema } from '@/domain/procurement/schemas';
 import type { SubmitContext } from '@/domain/procurement/submit-rules';
@@ -51,7 +52,6 @@ describe('checkSubmitRules — ร่างที่ครบถ้วน', () =
 
 describe('ช่องบังคับของรายงานขอซื้อ/ขอจ้าง', () => {
   it.each([
-    ['purpose', 'เหตุผลความจำเป็น'],
     ['classification', 'ประเภทงาน'],
     ['procurementMethod', 'วิธีจัดหา'],
     ['reportDate', 'วันที่รายงานขอซื้อ/ขอจ้าง'],
@@ -70,7 +70,7 @@ describe('ช่องบังคับของรายงานขอซื�
   });
 
   it('REQUIRED_REPORT_FIELD_MISSING ยกเว้นไม่ได้', () => {
-    const report = checkSubmitRules(validDraft({ purpose: undefined }), context());
+    const report = checkSubmitRules(validDraft({ classification: undefined }), context());
 
     expect(report.canProceed(true)).toBe(false);
   });
@@ -195,5 +195,226 @@ describe('การรวมกฎ', () => {
     expect(codes.has('REQUIRED_REPORT_FIELD_MISSING')).toBe(true);
     expect(codes.has('FUNDING_TOTAL_MISMATCH')).toBe(true);
     expect(codes.has('DATE_REQUEST_AFTER_DELIVERY')).toBe(true);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// กฎตามวงเงิน (กฎกระทรวงวงเงินฯ 2560, ระเบียบ ข้อ 22 และข้อ 79 วรรคสอง, ว804)
+// -----------------------------------------------------------------------------
+
+/** ร่างที่มีวงเงินตามที่ต้องการ: 1 รายการ จำนวน 1 หน่วย ราคาเท่ายอดที่ระบุ */
+function draftOfAmount(amount: string, overrides: Record<string, unknown> = {}) {
+  return validDraft({
+    items: [{ lineNo: 1, description: 'พัสดุ (ตัวอย่าง)', quantity: '1', unitPrice: amount }],
+    fundingAllocations: [{ lineNo: 1, budgetAccountId: ACCOUNT_A, amount }],
+    ...overrides,
+  });
+}
+
+function bigContext() {
+  return context({ availableByAccount: new Map([[ACCOUNT_A, 900_000_000n]]) });
+}
+
+function codesOf(report: ReturnType<typeof checkSubmitRules>): string[] {
+  return report.findings.map((finding) => finding.code);
+}
+
+describe('ซื้อไม่เกิน 50,000 บาท ใช้รายงาน 3 รายการ (ว804)', () => {
+  it('ไม่บังคับเหตุผลความจำเป็นและกำหนดเวลาใช้พัสดุ', () => {
+    const report = checkSubmitRules(
+      draftOfAmount('50000.00', { purpose: undefined, requiredDate: undefined }),
+      bigContext(),
+    );
+
+    expect(report.findings).toHaveLength(0);
+  });
+
+  it('เกิน 50,000 บาทแม้เพียงหนึ่งสตางค์ ต้องมีเหตุผลและกำหนดเวลาใช้พัสดุ', () => {
+    const report = checkSubmitRules(
+      draftOfAmount('50000.01', { purpose: undefined, requiredDate: undefined }),
+      bigContext(),
+    );
+
+    expect(report.findings.filter((f) => f.field === 'purpose')).toHaveLength(1);
+    expect(report.findings.filter((f) => f.field === 'requiredDate')).toHaveLength(1);
+  });
+
+  it('งานจ้างไม่ได้ใช้ขั้นตอนย่อ แม้วงเงินไม่เกิน 50,000 บาท', () => {
+    const report = checkSubmitRules(
+      draftOfAmount('10000.00', {
+        classification: 'SERVICE',
+        purpose: undefined,
+        requiredDate: undefined,
+      }),
+      bigContext(),
+    );
+
+    expect(report.findings.map((f) => f.field)).toEqual(
+      expect.arrayContaining(['purpose', 'requiredDate']),
+    );
+  });
+
+  it('กรณีฉุกเฉินต้องมีเหตุผลเสมอ แต่ตัดกำหนดเวลาใช้พัสดุได้ (ข้อ 22 วรรคสอง)', () => {
+    const report = checkSubmitRules(
+      draftOfAmount('120000.00', {
+        isEmergency: true,
+        purpose: undefined,
+        requiredDate: undefined,
+      }),
+      bigContext(),
+    );
+
+    expect(report.findings.filter((f) => f.field === 'purpose')).toHaveLength(1);
+    expect(report.findings.filter((f) => f.field === 'requiredDate')).toHaveLength(0);
+  });
+});
+
+describe('วิธีเฉพาะเจาะจงกับวงเงิน 500,000 บาท', () => {
+  it('500,000.00 พอดียังใช้เฉพาะเจาะจงได้', () => {
+    const report = checkSubmitRules(
+      draftOfAmount('500000.00', { requiredDate: '2026-02-01' }),
+      bigContext(),
+    );
+
+    expect(codesOf(report)).not.toContain('METHOD_EXCEEDS_LIMIT');
+  });
+
+  it('เกิน 500,000 บาทแล้วใช้เฉพาะเจาะจงถูกปฏิเสธ และยกเว้นไม่ได้', () => {
+    const report = checkSubmitRules(
+      draftOfAmount('500000.01', { requiredDate: '2026-02-01' }),
+      bigContext(),
+    );
+
+    expect(codesOf(report)).toContain('METHOD_EXCEEDS_LIMIT');
+    expect(report.canProceed(true)).toBe(false);
+  });
+
+  it('เกิน 500,000 บาทแต่ฉุกเฉิน หรือระบุฐานกฎหมาย ผ่านข้อนี้ได้', () => {
+    const emergency = checkSubmitRules(
+      draftOfAmount('900000.00', { isEmergency: true }),
+      bigContext(),
+    );
+    const withBasis = checkSubmitRules(
+      draftOfAmount('900000.00', {
+        requiredDate: '2026-02-01',
+        methodLegalBasisCode: 'ม.56(2)(ซ)',
+      }),
+      bigContext(),
+    );
+
+    expect(codesOf(emergency)).not.toContain('METHOD_EXCEEDS_LIMIT');
+    expect(codesOf(withBasis)).not.toContain('METHOD_EXCEEDS_LIMIT');
+  });
+
+  it('วิธีอื่นที่วงเงินไม่เกิน 500,000 บาท เตือนแต่ไม่บล็อก', () => {
+    const report = checkSubmitRules(
+      draftOfAmount('200000.00', { procurementMethod: 'SELECTION', requiredDate: '2026-02-01' }),
+      bigContext(),
+    );
+
+    const finding = report.findings.find((f) => f.code === 'METHOD_NOT_SPECIFIC_FOR_SMALL');
+    expect(finding?.severity).toBe('WARNING');
+    expect(report.canProceed(false)).toBe(true);
+  });
+});
+
+describe('ซื้อก่อนรายงานตามหลัง', () => {
+  // 2026-01-05 จันทร์ ซื้อ → 2026-01-12 จันทร์ = 5 วันทำการ
+  const purchaseFirst = {
+    requestDate: '2026-01-05',
+    orderOrAgreementDate: '2026-01-05',
+    deliveryOrServiceDate: '2026-01-05',
+    inspectionDate: '2026-01-05',
+  };
+
+  it('ซื้อไม่เกิน 50,000 บาท รายงานภายใน 5 วันทำการ ผ่านพร้อมข้อความแจ้ง', () => {
+    const report = checkSubmitRules(
+      draftOfAmount('20000.00', { ...purchaseFirst, reportDate: '2026-01-12' }),
+      bigContext(),
+    );
+
+    expect(report.hasErrors).toBe(false);
+    const notice = report.findings.find((f) => f.code === 'BUY_FIRST_REPORT_DEADLINE');
+    expect(notice?.severity).toBe('INFO');
+  });
+
+  it('รายงานเกิน 5 วันทำการ เป็นคำเตือน ไม่บล็อก', () => {
+    const report = checkSubmitRules(
+      draftOfAmount('20000.00', { ...purchaseFirst, reportDate: '2026-01-13' }),
+      bigContext(),
+    );
+
+    expect(report.hasErrors).toBe(false);
+    const notice = report.findings.find((f) => f.code === 'BUY_FIRST_REPORT_DEADLINE');
+    expect(notice?.severity).toBe('WARNING');
+  });
+
+  it('งานจ้างไม่เร่งด่วน ซื้อก่อนรายงานยังเป็นข้อผิดลำดับเวลาเหมือนเดิม', () => {
+    const report = checkSubmitRules(
+      draftOfAmount('20000.00', {
+        ...purchaseFirst,
+        classification: 'SERVICE',
+        requiredDate: '2026-02-01',
+        reportDate: '2026-01-12',
+      }),
+      bigContext(),
+    );
+
+    expect(codesOf(report)).toContain('DATE_OUT_OF_ORDER');
+  });
+
+  it('วงเงินเกิน 50,000 บาทและไม่ฉุกเฉิน ซื้อก่อนรายงานไม่ได้', () => {
+    const report = checkSubmitRules(
+      draftOfAmount('80000.00', {
+        ...purchaseFirst,
+        requiredDate: '2026-02-01',
+        reportDate: '2026-01-12',
+      }),
+      bigContext(),
+    );
+
+    expect(report.hasErrors).toBe(true);
+  });
+
+  it('กรณีฉุกเฉิน ซื้อก่อนรายงานได้ ไม่กำหนดจำนวนวัน (ข้อ 79 วรรคสอง ไม่ระบุ)', () => {
+    const report = checkSubmitRules(
+      draftOfAmount('80000.00', {
+        ...purchaseFirst,
+        isEmergency: true,
+        reportDate: '2026-02-20',
+      }),
+      bigContext(),
+    );
+
+    // วันที่รายงาน 20 ก.พ. ยังอยู่ในปีงบประมาณ — ไม่มี ERROR และไม่มี WARNING เรื่องกำหนดวัน
+    expect(report.hasErrors).toBe(false);
+    expect(report.findings.find((f) => f.code === 'BUY_FIRST_REPORT_DEADLINE')?.severity).toBe(
+      'INFO',
+    );
+  });
+
+  it('ผ่อนเฉพาะขั้นเอกสาร ตรวจรับก่อนส่งมอบยังผิดเสมอ', () => {
+    const report = checkSubmitRules(
+      draftOfAmount('20000.00', {
+        ...purchaseFirst,
+        deliveryOrServiceDate: '2026-01-06',
+        inspectionDate: '2026-01-05',
+        reportDate: '2026-01-07',
+      }),
+      bigContext(),
+    );
+
+    expect(report.hasErrors).toBe(true);
+  });
+});
+
+describe('weekdaysAfter', () => {
+  it('นับเฉพาะจันทร์–ศุกร์ นับถัดจากวันเริ่ม รวมวันสิ้นสุด', () => {
+    expect(weekdaysAfter('2026-01-05', '2026-01-05')).toBe(0);
+    expect(weekdaysAfter('2026-01-05', '2026-01-09')).toBe(4);
+    // ศุกร์ 9 → จันทร์ 12 ข้ามเสาร์อาทิตย์
+    expect(weekdaysAfter('2026-01-09', '2026-01-12')).toBe(1);
+    expect(weekdaysAfter('2026-01-05', '2026-01-12')).toBe(5);
+    expect(weekdaysAfter('2026-01-05', '2026-01-13')).toBe(6);
   });
 });

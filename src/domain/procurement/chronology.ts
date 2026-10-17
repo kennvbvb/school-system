@@ -73,6 +73,33 @@ const NAMED_PAIR_RULES: readonly {
   },
 ];
 
+/**
+ * ขั้นที่ "ทำก่อนไม่ได้" ตามปกติ แต่ทำตามหลังได้เมื่อซื้อ/จ้างไปก่อน
+ *
+ * ซื้อก่อนรายงานตามหลังได้ในสองกรณีเท่านั้น คือเร่งด่วนที่คาดไม่ได้ (ระเบียบ ข้อ 79
+ * วรรคสอง) และซื้อขั้นตอนย่อไม่เกิน 50,000 บาท (ว804) ซึ่งผู้ซื้อเป็นผู้ตรวจรับเอง
+ * จึงยอมให้ขั้นเอกสารฝั่งขอ/รายงาน/อนุมัติ/คัดเลือกตามหลังขั้นสั่งซื้อ ส่งมอบ ตรวจรับ
+ *
+ * **ไม่ยอมให้คู่อื่นกลับลำดับ** เช่นตรวจรับก่อนส่งมอบ หรือส่งเบิกก่อนอนุมัติ
+ * ซึ่งเป็นความผิดลำดับจริงในทุกกรณี
+ */
+export const BUY_FIRST_DOCUMENT_STEPS: readonly ProcurementMilestone[] = [
+  'requestDate',
+  'reportDate',
+  'approvedDate',
+  'selectionDate',
+];
+export const BUY_FIRST_ACTION_STEPS: readonly ProcurementMilestone[] = [
+  'orderOrAgreementDate',
+  'deliveryOrServiceDate',
+  'inspectionDate',
+];
+
+export interface ChronologyOptions {
+  /** true = ผ่อนคู่ "ขั้นเอกสาร ตามหลัง ขั้นปฏิบัติ" ตามที่ BUY_FIRST_* กำหนด */
+  buyFirst?: boolean;
+}
+
 function readDate(dates: ProcurementDates, milestone: ProcurementMilestone): string | null {
   const value = dates[milestone];
   return typeof value === 'string' && value !== '' ? value : null;
@@ -95,7 +122,10 @@ function describe(milestone: ProcurementMilestone, value: string): string {
  * เปรียบเทียบสตริง YYYY-MM-DD ตรง ๆ ได้ เพราะรูปแบบนี้เรียงตามพจนานุกรม
  * ตรงกับลำดับเวลาเสมอ และไม่ต้องผ่าน Date ซึ่งจะพาเรื่องเขตเวลาเข้ามาโดยไม่จำเป็น
  */
-export function checkChronology(dates: ProcurementDates): ValidationReport {
+export function checkChronology(
+  dates: ProcurementDates,
+  options: ChronologyOptions = {},
+): ValidationReport {
   const collector = new FindingCollector();
 
   for (let i = 0; i < PROCUREMENT_MILESTONES.length; i += 1) {
@@ -113,6 +143,14 @@ export function checkChronology(dates: ProcurementDates): ValidationReport {
       if (!laterValue) continue;
 
       if (laterValue >= earlierValue) continue;
+
+      if (
+        options.buyFirst &&
+        BUY_FIRST_DOCUMENT_STEPS.includes(earlier) &&
+        BUY_FIRST_ACTION_STEPS.includes(later)
+      ) {
+        continue;
+      }
 
       const named = NAMED_PAIR_RULES.find(
         (rule) => rule.earlier === earlier && rule.later === later,

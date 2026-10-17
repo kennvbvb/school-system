@@ -17,6 +17,9 @@ import type { RuleCode } from '@/domain/validation/rules';
  * สำเนาจะเก่าเงียบ ๆ พร้อมกับของจริง
  */
 const MIGRATION = 'supabase/migrations/20260908000200_procurement_submit.sql';
+// procurement_check_submit ถูกนิยามใหม่ตามวงเงินในไฟล์นี้ (รุ่นล่าสุดคือรุ่นที่บังคับจริง)
+const CHECK_SUBMIT_MIGRATION =
+  'supabase/migrations/20261008000100_procurement_value_tier_rules.sql';
 
 function overridableRulesInSql(): string[] {
   const sql = readFileSync(MIGRATION, 'utf8');
@@ -53,6 +56,7 @@ describe('กฎที่ยกเว้นได้ตรงกันระห�
     'FISCAL_YEAR_MISMATCH',
     'REQUIRED_REPORT_FIELD_MISSING',
     'DOCUMENT_NUMBER_DUPLICATE',
+    'METHOD_EXCEEDS_LIMIT',
   ])('%s ยกเว้นไม่ได้ทั้งสองฝั่ง', (code) => {
     expect(isOverridableRule(code)).toBe(false);
     expect(overridableRulesInSql()).not.toContain(code);
@@ -61,7 +65,7 @@ describe('กฎที่ยกเว้นได้ตรงกันระห�
 
 describe('รหัสกฎที่ SQL ใช้จริง ต้องเป็นรหัสที่โดเมนรู้จัก', () => {
   it('ไม่มีรหัสที่พิมพ์ผิดใน procurement_check_submit', () => {
-    const sql = readFileSync(MIGRATION, 'utf8');
+    const sql = readFileSync(CHECK_SUBMIT_MIGRATION, 'utf8');
     const start = sql.indexOf('create or replace function public.procurement_check_submit');
     const body = sql.slice(start, sql.indexOf('return;\nend;\n$$;', start));
 

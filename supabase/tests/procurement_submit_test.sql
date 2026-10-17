@@ -198,14 +198,18 @@ select pg_temp.assert_eq(
 -- ช่องบังคับของรายงานขอซื้อ/ขอจ้าง
 -- ---------------------------------------------------------------------------
 
+-- รายการนี้เป็น "ซื้อ" ไม่เกิน 50,000 บาท ซึ่งใช้รายงาน 3 รายการ (ว804) ไม่บังคับเหตุผลความจำเป็น
+-- จึงเปลี่ยนเป็นงานจ้างก่อน — ขั้นตอนย่อใช้กับการซื้อเท่านั้น ส่วนการทดสอบขั้นตอนย่อโดยตรงอยู่ท้ายไฟล์
+-- กำหนดเวลาที่ต้องการใช้พัสดุใส่ไว้ด้วย เพื่อให้การทดสอบที่ตามมาไม่ติดช่องนี้
 select pg_temp.fx($fx$
-update public.procurements set purpose = null
+update public.procurements
+set purpose = null, classification = 'SERVICE', required_date = '2026-02-10'
 where id = 'd0000000-0000-4000-8000-000000000001'
 $fx$);
 
 select pg_temp.assert_eq(
   pg_temp.has_rule('d0000000-0000-4000-8000-000000000001', 'REQUIRED_REPORT_FIELD_MISSING'), true,
-  'ขาดเหตุผลความจำเป็น ถูกตรวจพบ');
+  'ขาดเหตุผลความจำเป็น (งานจ้าง) ถูกตรวจพบ');
 
 select pg_temp.fx($fx$
 update public.procurements set purpose = 'ใช้ในงานสำนักงานประจำภาคเรียน', procurement_method = null
@@ -330,6 +334,165 @@ $fx$);
 select pg_temp.assert_fails($$
   select public.procurement_submit('d0000000-0000-4000-8000-000000000002', 99)
 $$, 'มีผู้อื่นแก้ไขรายการนี้ไปแล้ว', 'ส่งด้วย version เก่าไม่ได้');
+
+-- ---------------------------------------------------------------------------
+-- กฎตามวงเงิน (กฎกระทรวงวงเงินฯ 2560, ระเบียบ ข้อ 22 และข้อ 79 วรรคสอง, ว804)
+--
+-- ต้องตรงกับ tests/unit/submit-rules.test.ts กรณีต่อกรณี เพราะกฎอยู่สองที่
+-- ---------------------------------------------------------------------------
+
+reset role;
+
+-- ต้องสร้างในบทบาทเจ้าของ (ไม่ใช่ authenticated) เพราะ security definer รันด้วยสิทธิ์ผู้สร้าง
+-- สร้างรายการพร้อมรายการย่อยหนึ่งบรรทัดและแหล่งเงินเท่ายอด
+create or replace function pg_temp.mk(
+  p_id uuid, p_class text, p_method text, p_amount numeric,
+  p_emergency boolean default false, p_purpose text default null, p_required date default null,
+  p_order date default null, p_report date default '2026-01-06', p_basis text default null
+) returns void language plpgsql security definer as $$
+begin
+  insert into public.procurements (
+    id, subject, purpose, tax_mode, fiscal_year_id, request_date, report_date, required_date,
+    order_or_agreement_date, delivery_or_service_date, inspection_date,
+    classification, procurement_method, is_emergency, method_legal_basis_code, created_by
+  ) values (
+    p_id, 'ทดสอบวงเงิน (ตัวอย่าง)', p_purpose, 'EXEMPT', 'f0000000-0000-4000-8000-000000000001',
+    '2026-01-05', p_report, p_required, p_order, p_order, p_order,
+    p_class::public.procurement_classification, p_method::public.procurement_method,
+    p_emergency, p_basis, 'a2222222-2222-4222-8222-222222222222'
+  );
+  insert into public.procurement_items (procurement_id, line_no, description, quantity, unit_price, tax_rate)
+  values (p_id, 1, 'พัสดุ (ตัวอย่าง)', 1, p_amount, 0);
+  insert into public.procurement_funding_allocations (procurement_id, line_no, budget_account_id, amount)
+  values (p_id, 1, 'b0000000-0000-4000-8000-000000000001', p_amount);
+end;
+$$;
+
+set local request.jwt.claim.sub = 'a3333333-3333-4333-8333-333333333333';
+set local role authenticated;
+select public.budget_post_movement(
+  'b0000000-0000-4000-8000-000000000001', 'ALLOCATION', 900000000.00, '2026-01-02', 'ตั้งงบกว้างสำหรับทดสอบวงเงิน'
+) is not null as allocated;
+reset role;
+set local role authenticated;
+set local request.jwt.claim.sub = 'a2222222-2222-4222-8222-222222222222';
+
+create or replace function pg_temp.has_field(p_id uuid, p_code text, p_field text)
+returns boolean language sql as $$
+  select exists (
+    select 1 from public.procurement_check_submit(p_id)
+    where rule_code = p_code and field = p_field
+  );
+$$;
+
+create or replace function pg_temp.severity_of(p_id uuid, p_code text)
+returns text language sql as $$
+  select severity::text from public.procurement_check_submit(p_id) where rule_code = p_code limit 1;
+$$;
+
+-- ซื้อไม่เกิน 50,000 บาท: ไม่บังคับเหตุผลและกำหนดเวลาใช้พัสดุ
+select pg_temp.mk('d0000000-0000-4000-8000-0000000000a1', 'GOODS', 'SPECIFIC', 50000.00);
+select pg_temp.assert_eq(
+  pg_temp.error_count('d0000000-0000-4000-8000-0000000000a1'), 0,
+  'ซื้อ 50,000.00 พอดี ไม่ต้องมีเหตุผลและกำหนดเวลาใช้พัสดุ (ว804)');
+
+-- เกิน 50,000 บาทเพียงหนึ่งสตางค์ ต้องมีทั้งสองช่อง
+select pg_temp.mk('d0000000-0000-4000-8000-0000000000a2', 'GOODS', 'SPECIFIC', 50000.01);
+select pg_temp.assert_eq(
+  pg_temp.has_field('d0000000-0000-4000-8000-0000000000a2', 'REQUIRED_REPORT_FIELD_MISSING', 'purpose'),
+  true, 'ซื้อ 50,000.01 ต้องมีเหตุผลความจำเป็น');
+select pg_temp.assert_eq(
+  pg_temp.has_field('d0000000-0000-4000-8000-0000000000a2', 'REQUIRED_REPORT_FIELD_MISSING', 'requiredDate'),
+  true, 'ซื้อ 50,000.01 ต้องมีกำหนดเวลาใช้พัสดุ');
+
+-- งานจ้างไม่ใช้ขั้นตอนย่อ แม้วงเงินน้อย
+select pg_temp.mk('d0000000-0000-4000-8000-0000000000a3', 'SERVICE', 'SPECIFIC', 10000.00);
+select pg_temp.assert_eq(
+  pg_temp.has_field('d0000000-0000-4000-8000-0000000000a3', 'REQUIRED_REPORT_FIELD_MISSING', 'purpose'),
+  true, 'งานจ้างไม่ใช้ขั้นตอนย่อ ต้องมีเหตุผลความจำเป็น');
+
+-- ฉุกเฉิน: ต้องมีเหตุผล แต่ตัดกำหนดเวลาใช้พัสดุได้ (ข้อ 22 วรรคสอง)
+select pg_temp.mk('d0000000-0000-4000-8000-0000000000a4', 'GOODS', 'SPECIFIC', 120000.00, true);
+select pg_temp.assert_eq(
+  pg_temp.has_field('d0000000-0000-4000-8000-0000000000a4', 'REQUIRED_REPORT_FIELD_MISSING', 'purpose'),
+  true, 'ฉุกเฉินต้องมีเหตุผลเสมอ');
+select pg_temp.assert_eq(
+  pg_temp.has_field('d0000000-0000-4000-8000-0000000000a4', 'REQUIRED_REPORT_FIELD_MISSING', 'requiredDate'),
+  false, 'ฉุกเฉินตัดกำหนดเวลาใช้พัสดุได้');
+
+-- วิธีเฉพาะเจาะจงกับ 500,000 บาท
+select pg_temp.mk('d0000000-0000-4000-8000-0000000000b1', 'GOODS', 'SPECIFIC', 500000.00,
+  false, 'เหตุผล', '2026-02-01');
+select pg_temp.assert_eq(
+  pg_temp.has_rule('d0000000-0000-4000-8000-0000000000b1', 'METHOD_EXCEEDS_LIMIT'), false,
+  '500,000.00 พอดี ใช้เฉพาะเจาะจงได้');
+
+select pg_temp.mk('d0000000-0000-4000-8000-0000000000b2', 'GOODS', 'SPECIFIC', 500000.01,
+  false, 'เหตุผล', '2026-02-01');
+select pg_temp.assert_eq(
+  pg_temp.severity_of('d0000000-0000-4000-8000-0000000000b2', 'METHOD_EXCEEDS_LIMIT'), 'ERROR',
+  'เกิน 500,000 บาท ใช้เฉพาะเจาะจงไม่ได้');
+
+select pg_temp.assert_eq(
+  public.is_overridable_rule('METHOD_EXCEEDS_LIMIT'), false,
+  'METHOD_EXCEEDS_LIMIT ยกเว้นไม่ได้');
+
+select pg_temp.assert_fails($$
+  select pg_temp.submit_now('d0000000-0000-4000-8000-0000000000b2', 'ขอยกเว้น')
+$$, 'ยังมีข้อที่ต้องแก้', 'ผู้มีสิทธิ์ยกเว้นก็ส่งเฉพาะเจาะจงเกิน 500,000 บาทไม่ได้');
+
+select pg_temp.mk('d0000000-0000-4000-8000-0000000000b3', 'GOODS', 'SPECIFIC', 900000.00,
+  true, 'เหตุผลฉุกเฉิน');
+select pg_temp.assert_eq(
+  pg_temp.has_rule('d0000000-0000-4000-8000-0000000000b3', 'METHOD_EXCEEDS_LIMIT'), false,
+  'เกิน 500,000 บาทแต่ฉุกเฉิน ผ่านข้อนี้');
+
+select pg_temp.mk('d0000000-0000-4000-8000-0000000000b4', 'GOODS', 'SPECIFIC', 900000.00,
+  false, 'เหตุผล', '2026-02-01', null, '2026-01-06', 'ม.56(2)(ซ)');
+select pg_temp.assert_eq(
+  pg_temp.has_rule('d0000000-0000-4000-8000-0000000000b4', 'METHOD_EXCEEDS_LIMIT'), false,
+  'เกิน 500,000 บาทแต่ระบุฐานกฎหมาย ผ่านข้อนี้');
+
+select pg_temp.mk('d0000000-0000-4000-8000-0000000000b5', 'GOODS', 'SELECTION', 200000.00,
+  false, 'เหตุผล', '2026-02-01');
+select pg_temp.assert_eq(
+  pg_temp.severity_of('d0000000-0000-4000-8000-0000000000b5', 'METHOD_NOT_SPECIFIC_FOR_SMALL'), 'WARNING',
+  'วิธีคัดเลือกที่วงเงินไม่เกิน 500,000 บาท เตือนแต่ไม่บล็อก');
+
+-- ซื้อก่อนรายงานตามหลัง
+-- 2026-01-05 (จันทร์) ซื้อ → 2026-01-12 (จันทร์) = 5 วันทำการ
+select pg_temp.mk('d0000000-0000-4000-8000-0000000000c1', 'GOODS', 'SPECIFIC', 20000.00,
+  false, null, null, '2026-01-05', '2026-01-12');
+select pg_temp.assert_eq(
+  pg_temp.error_count('d0000000-0000-4000-8000-0000000000c1'), 0,
+  'ซื้อไม่เกิน 50,000 บาท รายงานภายใน 5 วันทำการ ไม่มีข้อผิดพลาด');
+select pg_temp.assert_eq(
+  pg_temp.severity_of('d0000000-0000-4000-8000-0000000000c1', 'BUY_FIRST_REPORT_DEADLINE'), 'INFO',
+  'ซื้อก่อนรายงานภายในกำหนด แจ้งเป็น INFO');
+
+select pg_temp.mk('d0000000-0000-4000-8000-0000000000c2', 'GOODS', 'SPECIFIC', 20000.00,
+  false, null, null, '2026-01-05', '2026-01-13');
+select pg_temp.assert_eq(
+  pg_temp.error_count('d0000000-0000-4000-8000-0000000000c2'), 0,
+  'รายงานเกิน 5 วันทำการ ไม่บล็อก');
+select pg_temp.assert_eq(
+  pg_temp.severity_of('d0000000-0000-4000-8000-0000000000c2', 'BUY_FIRST_REPORT_DEADLINE'), 'WARNING',
+  'รายงานเกิน 5 วันทำการ เตือน');
+
+select pg_temp.mk('d0000000-0000-4000-8000-0000000000c3', 'GOODS', 'SPECIFIC', 80000.00,
+  false, 'เหตุผล', '2026-02-01', '2026-01-05', '2026-01-12');
+select pg_temp.assert_eq(
+  pg_temp.has_rule('d0000000-0000-4000-8000-0000000000c3', 'DATE_OUT_OF_ORDER'), true,
+  'เกิน 50,000 บาทและไม่ฉุกเฉิน ซื้อก่อนรายงานไม่ได้');
+
+select pg_temp.mk('d0000000-0000-4000-8000-0000000000c4', 'GOODS', 'SPECIFIC', 80000.00,
+  true, 'เหตุผลฉุกเฉิน', null, '2026-01-05', '2026-02-20');
+select pg_temp.assert_eq(
+  pg_temp.error_count('d0000000-0000-4000-8000-0000000000c4'), 0,
+  'ฉุกเฉิน ซื้อก่อนรายงานได้ (ข้อ 79 วรรคสอง ไม่กำหนดจำนวนวัน)');
+select pg_temp.assert_eq(
+  pg_temp.severity_of('d0000000-0000-4000-8000-0000000000c4', 'BUY_FIRST_REPORT_DEADLINE'), 'INFO',
+  'ฉุกเฉินแจ้งเป็น INFO ไม่มีคำเตือนเรื่องจำนวนวัน');
 
 -- ---------------------------------------------------------------------------
 -- ผลตรวจเขียนตรงไม่ได้ ต้องผ่าน function เท่านั้น
