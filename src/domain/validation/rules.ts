@@ -46,6 +46,10 @@ export const RULE_CODES = [
   'SOURCE_DOCUMENT_MISSING',
   'FISCAL_YEAR_MISMATCH',
   'TEMPLATE_PLACEHOLDER_REMAINS',
+  // กฎตามวงเงิน (กฎกระทรวงวงเงินฯ 2560, ระเบียบ ข้อ 79 วรรคสอง, แนวปฏิบัติ กวจ. ว804)
+  'METHOD_EXCEEDS_LIMIT',
+  'METHOD_NOT_SPECIFIC_FOR_SMALL',
+  'BUY_FIRST_REPORT_DEADLINE',
 ] as const;
 
 export type RuleCode = (typeof RULE_CODES)[number];
